@@ -374,18 +374,32 @@ export default function App() {
   useEffect(() => { localStorage.setItem("uoiThemePresetsRegistry", JSON.stringify(themePresets)); }, [themePresets]);
 
   const currentProfile: SubjectProfile = subjectProfiles[headlineLessonId] || {
-    materials: {}, learningObjective: headlineLessonId === "uoi" ? "" : "🎯 We are learning to... ", // Prefilled state, centralIdea: "", loi1: "", loi2: "", loi3: "", activeLoiHighlight: 0, atls: "", subTasks: [], observations: {}, activeTaskId: null
-  };
-
-  const updateProfileField = (field: keyof SubjectProfile, val: any) => {
-    setSubjectProfiles(prev => ({
-      ...prev,
-      [headlineLessonId]: {
-        ...((prev[headlineLessonId] || { materials: {}, learningObjective: "", centralIdea: "", loi1: "", loi2: "", loi3: "", activeLoiHighlight: 0, atls: "", subTasks: [], observations: {}, activeTaskId: null }) as SubjectProfile),
-        [field]: val
-      }
-    }));
-  };
+  materials: {},
+  learningObjective: headlineLessonId === "uoi"
+    ? ""
+    : "🎯 We are learning to... ",
+  centralIdea: "",
+  loi1: "",
+  loi2: "",
+  loi3: "",
+  activeLoiHighlight: 0,
+  atls: "",
+  subTasks: [],
+  observations: {},
+  activeTaskId: null,
+};
+console.log("Current profile:", currentProfile);
+console.log("Current subtasks:", currentProfile.subTasks);
+ const updateProfileField = (field: keyof SubjectProfile, val: any) => {
+  // Removed the console.log(updatedTasks) from here because updatedTasks doesn't exist in this scope!
+  setSubjectProfiles(prev => ({
+    ...prev,
+    [headlineLessonId]: {
+      ...((prev[headlineLessonId] || { materials: {}, learningObjective: "", centralIdea: "", loi1: "", loi2: "", loi3: "", activeLoiHighlight: 0, atls: "", subTasks: [], observations: {}, activeTaskId: null }) as SubjectProfile),
+      [field]: val
+    }
+  }));
+};
 
   const updateStudentObservation = (studentName: string, status: "green" | "amber" | "red" | "none" | "absent", notesStr: string) => {
     const currentObs = currentProfile.observations || {};
@@ -459,12 +473,23 @@ export default function App() {
   };
 
   const addSubTask = () => {
-    if (!newSubTaskText.trim()) return;
-    const updatedTasks = [...currentProfile.subTasks, { id: Date.now(), text: newSubTaskText.trim(), done: false }];
-    updateProfileField("subTasks", updatedTasks);
-    setNewSubTaskText("");
-  };
+  if (!newSubTaskText.trim()) return;
+  
+  const updatedTasks = [
+    ...(currentProfile.subTasks ?? []),
+    {
+      id: Date.now(),
+      text: newSubTaskText.trim(),
+      done: false,
+    },
+  ];
 
+  // Save the updated tasks array back to the state profile
+  updateProfileField("subTasks", updatedTasks);
+  
+  // Clear out the text input field after adding
+  setNewSubTaskText(""); 
+};
   const generateClassGroups = () => {
     const presentList = students.filter(s => s.present).map(s => s.name);
     if (presentList.length === 0) return;
@@ -874,12 +899,19 @@ export default function App() {
           <div style={{ ...cardStyle, border: timetable.length > 0 && activeHeadlineItem ? `2.5px solid ${activeHeadlineItem.color}` : `1.5px solid ${C.cardBorder}`, background: "#fff" }}>
             <button style={closeBtn} onClick={() => toggle("taskBreakdown")}>×</button>
             <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-              <input value={newSubTaskText} onChange={(e) => setNewSubTaskText(e.target.value)} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if(e.key === "Enter") { e.preventDefault(); addSubTask(); } }} placeholder="Add step instruction..." style={{ ...inputStyle, padding: "8px 14px" }} />
-              <button onClick={addSubTask} style={{ ...btnSlate, padding: "8px 20px" }}>+ Add Step</button>
+             <input 
+  style={inputStyle}
+  type="text" 
+  value={newSubTaskText} 
+  onChange={(e) => setNewSubTaskText(e.target.value)} 
+  placeholder="Enter a new step..."
+  onKeyDown={(e) => e.key === 'Enter' && addSubTask()}
+/>
+<button onClick={addSubTask} style={btnSage}>Add Step</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
-              {currentProfile.subTasks.length > 0 ? (
-                currentProfile.subTasks.map((task) => {
+            {(currentProfile?.subTasks?.length ?? 0) > 0 ? (
+                  currentProfile.subTasks.map((task) => {
                   const isTaskFocused = currentProfile.activeTaskId === task.id;
                   const activeAccent = activeHeadlineItem?.color || C.slate;
                   return (
