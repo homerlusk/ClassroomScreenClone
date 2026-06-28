@@ -96,7 +96,7 @@ const closeBtn: React.CSSProperties = {
 };
 
 const WIDGETS = [
-  "timetable", "taskBreakdown", "progressTracker", "clock", "timer", "stopwatch", "notes", "traffic",
+  "timetable", "taskBreakdown", "progressTracker", "clock", "timer", "stopwatch", "notes",
   "classList", "scoreboard", "dice", "workSymbols", "embedder", "youtubeWidget"
 ] as const;
 type Widget = typeof WIDGETS[number];
@@ -109,7 +109,6 @@ const WIDGET_LABELS: Record<Widget, string> = {
   timer: "⏲ Timer",
   stopwatch: "⏱ Stopwatch",
   notes: "📝 Notes",
-  traffic: "🚦 Traffic",
   classList: "👥 Roster & Groups",
   scoreboard: "🏆 Scores",
   dice: "🎲 Dice",
@@ -120,7 +119,7 @@ const WIDGET_LABELS: Record<Widget, string> = {
 
 const WIDGET_GROUPS: { label: string; emoji: string; widgets: Widget[] }[] = [
   { label: "Timers", emoji: "⏱️", widgets: ["clock", "timer", "stopwatch"] },
-  { label: "Class Tools", emoji: "👥", widgets: ["traffic", "workSymbols", "dice", "classList", "scoreboard"] },
+  { label: "Class Tools", emoji: "👥", widgets: [ "workSymbols", "dice", "classList", "scoreboard"] },
   { label: "Lesson", emoji: "📚", widgets: ["timetable", "taskBreakdown", "progressTracker", "notes"] },
   { label: "Content", emoji: "🖥️", widgets: ["embedder", "youtubeWidget"] },
 ];
@@ -151,7 +150,7 @@ interface TimetableItem { id: number; lessonId: string; time: string; done: bool
 interface ScoreTeam { id: number; name: string; score: number; color: string; }
 interface SubTask { id: number; text: string; done: boolean; }
 interface Student { name: string; present: boolean; }
-interface StudentObservation { status: "green" | "amber" | "red" | "none"; notes: string; }
+interface StudentObservation { status: "green" | "amber" | "red" | "none" | "absent"; notes: string; }
 
 interface SubjectProfile {
   materials: Record<string, boolean>;
@@ -268,13 +267,7 @@ function DiceFace({ value }: { value: number }) {
 
 const DICE_DOTS: Record<number, [number, number][]> = { 1: [[50, 50]], 2: [[25, 25], [75, 75]], 3: [[25, 25], [50, 50], [75, 75]], 4: [[25, 25], [75, 25], [25, 75], [75, 75]], 5: [[25, 25], [75, 25], [50, 50], [25, 75], [75, 75]], 6: [[25, 25], [75, 25], [25, 50], [75, 50], [25, 75], [75, 75]] };
 const WORK_MODES = [ { id: "silent", icon: "🔇", label: "Silent Work", color: C.roses, bg: "#f5c6c6" }, { id: "whisper", icon: "🤫", label: "Whisper Only", color: C.amber, bg: "#fff3cd" }, { id: "partner", icon: "🗣️", label: "Partner Talk", color: C.sage, bg: "#c8e6c9" }, { id: "group", icon: "👥", label: "Group Work", color: C.slate, bg: "#dce8f5" }, { id: "free", icon: "🎉", label: "Free Time", color: C.lavender, bg: "#ede8f5" } ];
-
-type TrafficLightKey = "go" | "slow" | "stop";
-const TRAFFIC_LIGHT_CONFIG: Record<TrafficLightKey, { bg: string; border: string; textColor: string; label: string }> = {
-  go: { bg: "#c8e6c9", border: C.sage, textColor: "#2d4a33", label: "ALL GOOD" },
-  slow: { bg: "#fff3cd", border: C.amber, textColor: "#4a3800", label: "SLOW DOWN" },
-  stop: { bg: "#f5c6c6", border: C.roses, textColor: "#4a1c1c", label: "STOP AND LISTEN" }
-};
+;
 
 export default function App() {
   const [time, setTime] = useState<Date>(new Date());
@@ -285,7 +278,6 @@ export default function App() {
   const [swMs, setSwMs] = useState<number>(0);
   const swRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [notes, setNotes] = useState<string>(() => localStorage.getItem("notes") || "");
-  const [light, setLight] = useState<TrafficLightKey>("go");
   const [students, setStudents] = useState<Student[]>(() => {
     try {
       const stored = localStorage.getItem("classListObjects");
@@ -326,7 +318,7 @@ export default function App() {
   const [confirmClearActive, setConfirmClearActive] = useState<boolean>(false);
 
   const [visible, setVisible] = useState<Record<Widget, boolean>>({
-    timetable: true, taskBreakdown: false, progressTracker: false, clock: false, timer: false, stopwatch: false, notes: false, traffic: false, classList: false, scoreboard: false, dice: false, workSymbols: false, embedder: false, youtubeWidget: false
+    timetable: true, taskBreakdown: false, progressTracker: false, clock: false, timer: false, stopwatch: false, notes: false, classList: false, scoreboard: false, dice: false, workSymbols: false, embedder: false, youtubeWidget: false
   });
 
   const playTimerChime = () => {
@@ -358,42 +350,10 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    if ((light === "go" || light === "slow") && workMode.id === "silent") {
-      const whisperMode = WORK_MODES.find(m => m.id === "whisper");
-      if (whisperMode) setWorkMode(whisperMode);
-    }
-    else if (light === "stop" && workMode.id !== "silent") {
-      const silentMode = WORK_MODES.find(m => m.id === "silent");
-      if (silentMode) setWorkMode(silentMode);
-    }
-  }, [light, workMode.id]);
-
-  useEffect(() => {
-    if (workMode.id === "silent" && light !== "stop") {
-      setLight("stop");
-    }
-  }, [workMode.id, light]);
 
   const toggle = (key: Widget) => setVisible((v) => ({ ...v, [key]: !v[key] }));
   
   useEffect(() => { const id = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(id); }, []);
-  
-  useEffect(() => {
-    if (!running) return;
-    const id = setInterval(() => {
-      setSeconds((s) => {
-        if (s <= 1) {
-          setRunning(false);
-          setLight("stop");
-          playTimerChime();
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [running]);
 
   useEffect(() => {
     if (swRunning) {
@@ -414,7 +374,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem("uoiThemePresetsRegistry", JSON.stringify(themePresets)); }, [themePresets]);
 
   const currentProfile: SubjectProfile = subjectProfiles[headlineLessonId] || {
-    materials: {}, learningObjective: "", centralIdea: "", loi1: "", loi2: "", loi3: "", activeLoiHighlight: 0, atls: "", subTasks: [], observations: {}, activeTaskId: null
+    materials: {}, learningObjective: headlineLessonId === "uoi" ? "" : "🎯 We are learning to... ", // Prefilled state, centralIdea: "", loi1: "", loi2: "", loi3: "", activeLoiHighlight: 0, atls: "", subTasks: [], observations: {}, activeTaskId: null
   };
 
   const updateProfileField = (field: keyof SubjectProfile, val: any) => {
@@ -427,7 +387,7 @@ export default function App() {
     }));
   };
 
-  const updateStudentObservation = (studentName: string, status: "green" | "amber" | "red" | "none", notesStr: string) => {
+  const updateStudentObservation = (studentName: string, status: "green" | "amber" | "red" | "none" | "absent", notesStr: string) => {
     const currentObs = currentProfile.observations || {};
     const updatedObs = {
       ...currentObs,
@@ -462,7 +422,6 @@ export default function App() {
   };
 
   const activeHeadlineItem = LESSON_TYPES.find(l => l.id === headlineLessonId);
-  const lc = TRAFFIC_LIGHT_CONFIG[light];
   
   const swFormatted = (() => {
     const totalSec = Math.floor(swMs / 1000);
@@ -613,7 +572,7 @@ export default function App() {
       
       {/* ── LEFT SIDEBAR STRIP ── */}
       {showSidebar && (
-        <div style={{ width: "110px", borderRight: `2px solid ${C.cardBorder}`, background: C.card, padding: "24px 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", boxSizing: "border-box", overflowY: "auto", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>
+        <div style={{ width: "110px", borderRight: `2px solid ${C.cardBorder}`, background: C.card, padding: "12px 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", boxSizing: "border-box", overflowY: "auto", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>
           {confirmClearActive ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%", background: "#f8d7da", border: `1px solid ${C.roses}`, padding: "6px", borderRadius: "8px" }}>
               <span style={{ fontSize: "11px", fontWeight: "bold", textAlign: "center", color: C.roseDark }}>Confirm?</span>
@@ -664,7 +623,7 @@ export default function App() {
       )}
 
       {/* ── MAIN AREA ── */}
-      <div style={{ flex: 1, padding: "32px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "24px", minWidth: 0, maxWidth: "100%" }}>
+      <div style={{ flex: 1, padding: "12px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "24px", minWidth: 0, maxWidth: "100%" }}>
         
         {/* Change 1: Compact Categorized Group Menu Workspace */}
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", background: C.card, padding: "12px 18px", borderRadius: "16px", border: `1.5px solid ${C.cardBorder}`, alignItems: "center", width: "100%", boxSizing: "border-box", position: "relative" }}>
@@ -812,8 +771,7 @@ export default function App() {
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px" }}>
-                  <span style={{ ...labelStyle, fontSize: "11px", color: "#000" }}>{isUoi ? "🎯 Guiding Question:" : "🎯 Learning Objective:"}</span>
-                  <textarea value={currentProfile.learningObjective} onChange={(e) => updateProfileField("learningObjective", e.target.value)} style={{ ...inputStyle, background: "#fff", border: "2.5px solid #000", padding: "14px 18px", color: "#000", fontSize: "20px", fontWeight: "700", height: "85px", resize: "none" }} />
+{isUoi && <span style={{ ...labelStyle, fontSize: "11px", color: "#000" }}>🎯 Guiding Question:</span>}                  <textarea value={currentProfile.learningObjective} onChange={(e) => updateProfileField("learningObjective", e.target.value)} style={{ ...inputStyle, background: "#fff", border: "2.5px solid #000", padding: "14px 18px", color: "#000", fontSize: "20px", fontWeight: "700", height: "85px", resize: "none" }} />
                 </div>
 
                 {isUoi && (
@@ -891,6 +849,7 @@ export default function App() {
                                 <button title="Needs Support" onClick={() => updateStudentObservation(student.name, obs.status === "red" ? "none" : "red", obs.notes)} style={{ background: obs.status === "red" ? C.roses : "none", border: "1px solid #000", borderRadius: "50%", width: "24px", height: "24px", cursor: "pointer", fontSize: "11px", padding: 0 }}>🔴</button>
                                 <button title="Progressing" onClick={() => updateStudentObservation(student.name, obs.status === "amber" ? "none" : "amber", obs.notes)} style={{ background: obs.status === "amber" ? "#ffeeba" : "none", border: "1px solid #000", borderRadius: "50%", width: "24px", height: "24px", cursor: "pointer", fontSize: "11px", padding: 0 }}>🟡</button>
                                 <button title="Mastered" onClick={() => updateStudentObservation(student.name, obs.status === "green" ? "none" : "green", obs.notes)} style={{ background: obs.status === "green" ? "#d4edda" : "none", border: "1px solid #000", borderRadius: "50%", width: "24px", height: "24px", cursor: "pointer", fontSize: "11px", padding: 0 }}>🟢</button>
+                                <button title="Absent" onClick={() => updateStudentObservation(student.name, obs.status === "absent" ? "none" : "absent", obs.notes)} style={{ background: obs.status === "absent" ? "#e0e0e0" : "none", border: "1px solid #000", borderRadius: "50%", width: "24px", height: "24px", cursor: "pointer", fontSize: "11px", fontWeight: "900", padding: 0, color: "#555" }}>A</button>
                               </div>
                             </div>
                             <input 
@@ -962,7 +921,7 @@ export default function App() {
         )}
 
         {/* ── LOWER GRID ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "24px", width: "100%", boxSizing: "border-box" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "24px", width: "100%", boxSizing: "border-box" }}>
           
           {/* EMBEDDER */}
           {visible.embedder && (
@@ -1065,34 +1024,18 @@ export default function App() {
             </div>
           )}
 
-          {/* TRAFFIC LIGHT */}
-          {visible.traffic && (
-            <div style={cardStyle}>
-              <button style={closeBtn} onClick={() => toggle("traffic")}>×</button>
-              <div style={{ background: lc.bg, border: `2px solid ${lc.border}`, borderRadius: "14px", padding: "32px 24px", display: "flex", alignItems: "center", justifyContent: "center", gap: "16px", flex: 1, marginTop: "12px" }}>
-                <span style={{ fontSize: "44px", color: lc.border, lineHeight: 1 }}>●</span>
-                <span style={{ fontWeight: "800", fontSize: "24px", color: lc.textColor, textTransform: "uppercase" }}>{lc.label}</span>
-              </div>
-              <div style={{ display: "flex", gap: "8px", marginTop: "10px", justifyContent: "center" }}>
-                <button style={btnSage} onClick={() => setLight("go")}>GO</button>
-                <button style={btnAmber} onClick={() => setLight("slow")}>SLOW</button>
-                <button style={btnRose} onClick={() => setLight("stop")}>STOP</button>
-              </div>
-            </div>
-          )}
 
           {/* WORK MODES */}
           {visible.workSymbols && (
             <div style={{ ...cardStyle }}>
               <button style={closeBtn} onClick={() => toggle("workSymbols")}>×</button>
-              <div style={{ background: workMode.bg, border: `2px solid ${workMode.color}`, borderRadius: "14px", padding: "24px", textAlign: "center", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", marginTop: "12px" }}>
-                <div style={{ fontSize: "48px" }}>{workMode.icon}</div>
-                <div style={{ fontWeight: "800", fontSize: "22px", color: workMode.color, marginTop: "6px", textTransform: "uppercase" }}>{workMode.label}</div>
-              </div>
+              <div style={{ background: workMode.color, borderRadius: "14px", padding: "32px 24px", textAlign: "center", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", marginTop: "12px" }}>
+  <div style={{ fontWeight: "900", fontSize: "36px", color: "#fff", letterSpacing: "2px", textTransform: "uppercase" }}>{workMode.label}</div>
+</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "10px", justifyContent: "center" }}>
                 {WORK_MODES.map((m) => (
-                  <button key={m.id} onClick={() => setWorkMode(m)} style={{ ...btnBase, background: m.color, color: "#fff", padding: "6px 12px", fontSize: "12px" }}>{m.label.split(" ")[0]}</button>
-                ))}
+  <button key={m.id} onClick={() => setWorkMode(m)} style={{ ...btnBase, background: workMode.id === m.id ? m.color : C.highlight, color: workMode.id === m.id ? "#fff" : C.text, padding: "8px 14px", fontSize: "13px", border: `2px solid ${m.color}` }}>{m.label}</button>
+))}
               </div>
             </div>
           )}
