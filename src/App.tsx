@@ -7,7 +7,7 @@ const C = {
   muted: "#7a7068",
   sage: "#7a9e87",
   sageDark: "#4e7a60",
-  rose: "#c47b7b",
+  roses: "#c47b7b",
   roseDark: "#9e4f4f",
   slate: "#6b82a8",
   slateDark: "#3d5a80",
@@ -39,7 +39,7 @@ const btnBase: React.CSSProperties = {
   lineHeight: 1.3,
 };
 const btnSage: React.CSSProperties = { ...btnBase, background: C.sage, color: "#fff" };
-const btnRose: React.CSSProperties = { ...btnBase, background: C.rose, color: "#fff" };
+const btnRose: React.CSSProperties = { ...btnBase, background: C.roses, color: "#fff" };
 const btnSlate: React.CSSProperties = { ...btnBase, background: C.slate, color: "#fff" };
 const btnAmber: React.CSSProperties = { ...btnBase, background: C.amber, color: "#fff" };
 const btnLavender: React.CSSProperties = { ...btnBase, background: C.lavender, color: "#fff" };
@@ -96,7 +96,7 @@ const WIDGET_LABELS: Record<Widget, string> = {
   traffic: "🚦 Traffic",
   classList: "👥 Roster & Groups",
   scoreboard: "🏆 Scores",
-  says: "🎲 He says",
+  dice: "🎲 Dice",
   workSymbols: "🔇 Work Mode",
   embedder: "🔗 Web Embed Link",
   youtubeWidget: "📺 YouTube Video"
@@ -134,7 +134,7 @@ interface SubjectProfile {
   atls: string;
   subTasks: SubTask[];
 }
-const TEAM_COLORS = [C.sage, C.slate, C.rose, C.amber, C.lavender];
+const TEAM_COLORS = [C.sage, C.slate, C.roses, C.amber, C.lavender];
 interface LessonType {
   id: string;
   label: string;
@@ -207,7 +207,7 @@ function CircleTimer({ pct, minutes, seconds }: { pct: number; minutes: number; 
   const x = cx + r * Math.sin(angle);
   const y = cy - r * Math.cos(angle);
   const largeArc = angle > Math.PI ? 1 : 0;
-  const fillColor = pct > 0.5 ? C.sage : pct > 0.2 ? C.amber : C.rose;
+  const fillColor = pct > 0.5 ? C.sage : pct > 0.2 ? C.amber : C.roses;
   const timeLabel = `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, "0")}`;
   return (
     <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", minHeight: "340px" }}>
@@ -235,7 +235,7 @@ function DiceFace({ value }: { value: number }) {
   );
 }
 const DICE_DOTS: Record<number, [number, number][]> = { 1: [[50, 50]], 2: [[25, 25], [75, 75]], 3: [[25, 25], [50, 50], [75, 75]], 4: [[25, 25], [75, 25], [25, 75], [75, 75]], 5: [[25, 25], [75, 25], [50, 50], [25, 75], [75, 75]], 6: [[25, 25], [75, 25], [25, 50], [75, 50], [25, 75], [75, 75]] };
-const WORK_MODES = [ { id: "silent", icon: "🔇", label: "Silent Work", color: C.rose, bg: "#f5c6c6" }, { id: "whisper", icon: "🤫", label: "Whisper Only", color: C.amber, bg: "#fff3cd" }, { id: "partner", icon: "🗣️", label: "Partner Talk", color: C.sage, bg: "#c8e6c9" }, { id: "group", icon: "👥", label: "Group Work", color: C.slate, bg: "#dce8f5" }, { id: "free", icon: "🎉", label: "Free Time", color: C.lavender, bg: "#ede8f5" } ];
+const WORK_MODES = [ { id: "silent", icon: "🔇", label: "Silent Work", color: C.roses, bg: "#f5c6c6" }, { id: "whisper", icon: "🤫", label: "Whisper Only", color: C.amber, bg: "#fff3cd" }, { id: "partner", icon: "🗣️", label: "Partner Talk", color: C.sage, bg: "#c8e6c9" }, { id: "group", icon: "👥", label: "Group Work", color: C.slate, bg: "#dce8f5" }, { id: "free", icon: "🎉", label: "Free Time", color: C.lavender, bg: "#ede8f5" } ];
 export default function App() {
   const [time, setTime] = useState<Date>(new Date());
   const [seconds, setSeconds] = useState<number>(300);
@@ -261,6 +261,7 @@ export default function App() {
   const [ttLesson, setTtLesson] = useState<string>("art");
   const [ttTime, setTtTime] = useState("");
   const [ttNote, setTtNote] = useState("");
+  const [ttMode, setTtMode] = useState<"checklist" | "timed">("checklist");
   const [templates, setTemplates] = useState<Record<string, Omit<TimetableItem, "id">[]>>(() => { try { return JSON.parse(localStorage.getItem("timetableTemplates") || "{}"); } catch { return {}; } });
   const [newTemplateName, setNewTemplateName] = useState("");
   const [headlineLessonId, setHeadlineLessonId] = useState<string>(() => localStorage.getItem("activeHeadlineId") || "art");
@@ -317,7 +318,7 @@ export default function App() {
     }));
   };
   const activeHeadlineItem = LESSON_TYPES.find(l => l.id === headlineLessonId) || LESSON_TYPES[0];
-  const lc = { go: { bg: "#c8e6c9", border: C.sage, textColor: "#2d4a33", label: "ALL GOOD" }, slow: { bg: "#fff3cd", border: C.amber, textColor: "#4a3800", label: "SLOW DOWN" }, stop: { bg: "#f5c6c6", border: C.rose, textColor: "#4a1c1c", label: "STOP AND LISTEN" } }[light];
+  const lc = { go: { bg: "#c8e6c9", border: C.sage, textColor: "#2d4a33", label: "ALL GOOD" }, slow: { bg: "#fff3cd", border: C.amber, textColor: "#4a3800", label: "SLOW DOWN" }, stop: { bg: "#f5c6c6", border: C.roses, textColor: "#4a1c1c", label: "STOP AND LISTEN" } }[light];
   const swFormatted = (() => {
     const totalSec = Math.floor(swMs / 1000);
     const m = Math.floor(totalSec / 60).toString().padStart(2, "0");
@@ -430,10 +431,6 @@ export default function App() {
     { id: "ipad", name: "iPad" },
     { id: "writing_book", name: "Writing Book" },
     { id: "math_notebook", name: "Math Notebook" },
-    { id: "reading_book", name: "Reading Book" },
-    { id: "portfolio", name: "Portfolio" },
-    { id: "water_bottle", name: "Refill your water!" },
-    { id: "library", name: "Library Books" },
   ];
   const MemoizedIframeContainer = useMemo(() => {
     if (!embedHtml.trim()) return null;
@@ -533,13 +530,13 @@ export default function App() {
                   </button>
                   {isSelected && isEditingMaterials && (
                     <button onClick={(e) => { e.stopPropagation(); updateProfileField("materials", { ...currentProfile.materials, [m.id]: false }); }}
-                      style={{ position: "absolute", top: "-6px", right: "-6px", background: C.rose, color: "#fff", border: "2px solid #000", borderRadius: "50%", width: "24px", height: "24px", fontWeight: "900", fontSize: "14px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                      style={{ position: "absolute", top: "-6px", right: "-6px", background: C.roses, color: "#fff", border: "2px solid #000", borderRadius: "50%", width: "24px", height: "24px", fontWeight: "900", fontSize: "14px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                     >×</button>
                   )}
                 </div>
               );
             })}
-            <button onClick={() => setIsEditingMaterials(!isEditingMaterials)} style={{ ...btnGhost, fontSize: "10px", padding: "6px 14px", borderRadius: "10px", border: "1.5px dashed #000", background: isEditingMaterials ? C.highlight : "none" }}>
+            <button onClick={() => setIsEditingMaterials(!isEditingMaterials)} style={{ ...btnGhost, fontSize: "12px", padding: "6px 14px", borderRadius: "10px", border: "1.5px dashed #000", background: isEditingMaterials ? C.highlight : "none" }}>
               {isEditingMaterials ? "🔒 Lock View" : "🛠️ Select Desk Materials"}
             </button>
           </div>
@@ -641,7 +638,11 @@ export default function App() {
               <button style={closeBtn} onClick={() => toggle("timetable")}>×</button>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
                 <div style={labelStyle}>📅 Timetable Stack Setup</div>
-            
+                <div style={{ display: "flex", gap: "6px" }}>
+                  {(["checklist", "timed"] as const).map((m) => (
+                    <button key={m} onClick={() => setTtMode(m)} style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px", background: ttMode === m ? C.slate : C.highlight, color: ttMode === m ? "#fff" : C.text }}>{m === "checklist" ? "Checklist" : "Timed Rows"}</button>
+                  ))}
+                </div>
               </div>
               <div style={{ background: C.highlight, padding: "12px", borderRadius: "14px", display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
                 <select onChange={(e) => loadTemplate(e.target.value)} defaultValue="" style={{ ...inputStyle, width: "auto", flex: 1, padding: "6px 10px", fontSize: "14px" }}>
@@ -664,7 +665,7 @@ export default function App() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                {<input type="time" value={ttTime} onChange={(e) => setTtTime(e.target.value)} style={{ ...inputStyle, width: "110px" }} />}
+                {ttMode === "timed" && <input type="time" value={ttTime} onChange={(e) => setTtTime(e.target.value)} style={{ ...inputStyle, width: "110px" }} />}
                 <input value={ttNote} onChange={(e) => setTtNote(e.target.value)} placeholder="Note text..." style={inputStyle} />
                 <button style={btnSlate} onClick={() => { if(ttLesson) { setTimetable([...timetable, { id: Date.now(), lessonId: ttLesson, time: ttTime, done: false, note: ttNote }]); setTtTime(""); setTtNote(""); } }}>+ Add</button>
               </div>
@@ -733,7 +734,7 @@ export default function App() {
           )}
           {visible.dice && (
             <div style={cardStyle}>
-              <button style={closeBtn} onClick={() => toggle("says")}>×</button>
+              <button style={closeBtn} onClick={() => toggle("dice")}>×</button>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", minHeight: "180px" }}>
                 <div style={{ transition: rolling ? "transform 0.08s" : "none", transform: rolling ? `rotate(${Math.random() * 20 - 10}deg)` : "none" }}>
                   <DiceFace value={diceValue} />
@@ -783,7 +784,7 @@ export default function App() {
               {chosenStudent && <div style={{ background: "#dce8f5", padding: "12px", borderRadius: "10px", fontWeight: "800", fontSize: "18px", textAlign: "center" }}>⭐ {chosenStudent}</div>}
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", maxHeight: "100px", overflowY: "auto", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "8px" }}>
                 {students.map((s, i) => (
-                  <span key={i} style={{ background: s.present ? C.highlight : "#f5c6c6", border: s.present ? `1px solid ${C.cardBorder}` : `1px solid ${C.rose}`, padding: "4px 8px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px", opacity: s.present ? 1 : 0.6 }}>
+                  <span key={i} style={{ background: s.present ? C.highlight : "#f5c6c6", border: s.present ? `1px solid ${C.cardBorder}` : `1px solid ${C.roses}`, padding: "4px 8px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px", opacity: s.present ? 1 : 0.6 }}>
                     <input type="checkbox" checked={s.present} onChange={() => setStudents(students.map((st, idx) => idx === i ? { ...st, present: !st.present } : st))} style={{ cursor: "pointer" }} />
                     <span style={{ fontWeight: "700", textDecoration: s.present ? "none" : "line-through" }}>{s.name}</span>
                     <button onClick={() => setStudents(students.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}>×</button>
