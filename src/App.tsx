@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 
 const C = {
   bg: "#f2ede4",
@@ -118,6 +118,13 @@ const WIDGET_LABELS: Record<Widget, string> = {
   youtubeWidget: "📺 YouTube Video"
 };
 
+const WIDGET_GROUPS: { label: string; emoji: string; widgets: Widget[] }[] = [
+  { label: "Timers", emoji: "⏱️", widgets: ["clock", "timer", "stopwatch"] },
+  { label: "Class Tools", emoji: "👥", widgets: ["traffic", "workSymbols", "dice", "classList", "scoreboard"] },
+  { label: "Lesson", emoji: "📚", widgets: ["timetable", "taskBreakdown", "progressTracker", "notes"] },
+  { label: "Content", emoji: "🖥️", widgets: ["embedder", "youtubeWidget"] },
+];
+
 const PALETTES = {
   specialists: { color: "#2e4361", bg: "#dbe3ed" }, 
   breaks: { color: "#2d543d", bg: "#e2f0e6" },      
@@ -157,6 +164,7 @@ interface SubjectProfile {
   atls: string;
   subTasks: SubTask[];
   observations?: Record<string, StudentObservation>;
+  activeTaskId?: number | null;
 }
 
 interface LessonType { id: string; label: string; color: string; bg: string; }
@@ -237,8 +245,8 @@ function CircleTimer({ pct, minutes, seconds }: { pct: number; minutes: number; 
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={C.cardBorder} strokeWidth={stroke} />
         {pct > 0.001 && (
           pct >= 0.999
-            ? <circle cx={cx} cy={cy} r={r} fill="none" stroke={fillColor} strokeWidth={stroke} />
-            : <path d={`M ${cx} ${cy - r} A ${r} ${r} 0 ${largeArc} 1 ${x} ${y}`} fill="none" stroke={fillColor} strokeWidth={stroke} strokeLinecap="round" />
+            ? <circle cx={cx} cy={cy} r={r} fill="none" stroke={fillColor} strokeWidth={stroke} style={{ transition: "stroke 1.2s ease" }} />
+            : <path d={`M ${cx} ${cy - r} A ${r} ${r} 0 ${largeArc} 1 ${x} ${y}`} fill="none" stroke={fillColor} strokeWidth={stroke} strokeLinecap="round" style={{ transition: "stroke 1.2s ease" }} />
         )}
         <text x={cx} y={cy - 10} textAnchor="middle" dominantBaseline="middle" fontSize="64" fontWeight="800" fill={C.text} fontFamily={font}>{timeLabel}</text>
         <text x={cx} y={cy + 46} textAnchor="middle" dominantBaseline="middle" fontSize="18" fontWeight="700" fill={C.muted} fontFamily={font}>{minutes} MIN TARGET</text>
@@ -261,34 +269,41 @@ function DiceFace({ value }: { value: number }) {
 const DICE_DOTS: Record<number, [number, number][]> = { 1: [[50, 50]], 2: [[25, 25], [75, 75]], 3: [[25, 25], [50, 50], [75, 75]], 4: [[25, 25], [75, 25], [25, 75], [75, 75]], 5: [[25, 25], [75, 25], [50, 50], [25, 75], [75, 75]], 6: [[25, 25], [75, 25], [25, 50], [75, 50], [25, 75], [75, 75]] };
 const WORK_MODES = [ { id: "silent", icon: "🔇", label: "Silent Work", color: C.roses, bg: "#f5c6c6" }, { id: "whisper", icon: "🤫", label: "Whisper Only", color: C.amber, bg: "#fff3cd" }, { id: "partner", icon: "🗣️", label: "Partner Talk", color: C.sage, bg: "#c8e6c9" }, { id: "group", icon: "👥", label: "Group Work", color: C.slate, bg: "#dce8f5" }, { id: "free", icon: "🎉", label: "Free Time", color: C.lavender, bg: "#ede8f5" } ];
 
+type TrafficLightKey = "go" | "slow" | "stop";
+const TRAFFIC_LIGHT_CONFIG: Record<TrafficLightKey, { bg: string; border: string; textColor: string; label: string }> = {
+  go: { bg: "#c8e6c9", border: C.sage, textColor: "#2d4a33", label: "ALL GOOD" },
+  slow: { bg: "#fff3cd", border: C.amber, textColor: "#4a3800", label: "SLOW DOWN" },
+  stop: { bg: "#f5c6c6", border: C.roses, textColor: "#4a1c1c", label: "STOP AND LISTEN" }
+};
+
 export default function App() {
   const [time, setTime] = useState<Date>(new Date());
   const [seconds, setSeconds] = useState<number>(300);
   const [running, setRunning] = useState<boolean>(false);
   const [minutes, setMinutes] = useState<number>(5);
-  const [swRunning, setSwRunning] = useState(false);
-  const [swMs, setSwMs] = useState(0);
+  const [swRunning, setSwRunning] = useState<boolean>(false);
+  const [swMs, setSwMs] = useState<number>(0);
   const swRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [notes, setNotes] = useState<string>(() => localStorage.getItem("notes") || "");
-  const [light, setLight] = useState<"go" | "slow" | "stop">("go");
+  const [light, setLight] = useState<TrafficLightKey>("go");
   const [students, setStudents] = useState<Student[]>(() => {
     try {
       const stored = localStorage.getItem("classListObjects");
       return stored ? JSON.parse(stored) : [];
     } catch { return []; }
   });
-  const [studentName, setStudentName] = useState("");
-  const [chosenStudent, setChosenStudent] = useState("");
+  const [studentName, setStudentName] = useState<string>("");
+  const [chosenStudent, setChosenStudent] = useState<string>("");
   const [groupSize, setGroupSize] = useState<number>(3);
   const [generatedGroups, setGeneratedGroups] = useState<string[][]>([]);
   const [timetable, setTimetable] = useState<TimetableItem[]>(() => { try { return JSON.parse(localStorage.getItem("timetable") || "[]"); } catch { return []; } });
   const [templates, setTemplates] = useState<Record<string, Omit<TimetableItem, "id">[]>>(() => { try { return JSON.parse(localStorage.getItem("timetableTemplates") || "{}"); } catch { return {}; } });
-  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateName, setNewTemplateName] = useState<string>("");
   const [headlineLessonId, setHeadlineLessonId] = useState<string>(() => localStorage.getItem("activeHeadlineId") || "art");
   const [subjectProfiles, setSubjectProfiles] = useState<Record<string, SubjectProfile>>(() => { try { return JSON.parse(localStorage.getItem("subjectProfiles") || "{}"); } catch { return {}; } });
-  const [newSubTaskText, setNewSubTaskText] = useState("");
-  const [isEditingMaterials, setIsEditingMaterials] = useState(false);
-  const [isEditingPresets, setIsEditingPresets] = useState(false); 
+  const [newSubTaskText, setNewSubTaskText] = useState<string>("");
+  const [isEditingMaterials, setIsEditingMaterials] = useState<boolean>(false);
+  const [isEditingPresets, setIsEditingPresets] = useState<boolean>(false); 
   const [selectedPresetToEdit, setSelectedPresetToEdit] = useState<string>("Who we are");
   const [themePresets, setThemePresets] = useState<Record<string, Presets>>(() => {
     try {
@@ -297,15 +312,18 @@ export default function App() {
     } catch { return DEFAULT_THEME_PRESETS; }
   });
   const [teams, setTeams] = useState<ScoreTeam[]>([ { id: 1, name: "Team A", score: 0, color: C.sage }, { id: 2, name: "Team B", score: 0, color: C.slate } ]);
-  const [newTeamName, setNewTeamName] = useState("");
-  const [diceValue, setDiceValue] = useState(1);
-  const [rolling, setRolling] = useState(false);
-  const [embedHtml, setEmbedHtml] = useState(() => localStorage.getItem("embedCodeMarkup") || "");
-  const [isEmbedInputCollapsed, setIsEmbedInputCollapsed] = useState(false);
-  const [youtubeUrl, setYoutubeUrl] = useState(() => localStorage.getItem("youtubeLinkUrl") || "");
-  const [isYoutubeInputCollapsed, setIsYoutubeInputCollapsed] = useState(false);
+  const [newTeamName, setNewTeamName] = useState<string>("");
+  const [diceValue, setDiceValue] = useState<number>(1);
+  const [rolling, setRolling] = useState<boolean>(false);
+  const [embedHtml, setEmbedHtml] = useState<string>(() => localStorage.getItem("embedCodeMarkup") || "");
+  const [isEmbedInputCollapsed, setIsEmbedInputCollapsed] = useState<boolean>(false);
+  const [youtubeUrl, setYoutubeUrl] = useState<string>(() => localStorage.getItem("youtubeLinkUrl") || "");
+  const [isYoutubeInputCollapsed, setIsYoutubeInputCollapsed] = useState<boolean>(false);
   const [hoveredSidebarId, setHoveredSidebarId] = useState<number | null>(null);
-  const [workMode, setWorkMode] = useState(WORK_MODES[0]);
+  const [workMode, setWorkMode] = useState<{ id: string; icon: string; label: string; color: string; bg: string }>(WORK_MODES[0]);
+
+  const [activeGroupMenu, setActiveGroupMenu] = useState<string | null>(null);
+  const [confirmClearActive, setConfirmClearActive] = useState<boolean>(false);
 
   const [visible, setVisible] = useState<Record<Widget, boolean>>({
     timetable: true, taskBreakdown: false, progressTracker: false, clock: false, timer: false, stopwatch: false, notes: false, traffic: false, classList: false, scoreboard: false, dice: false, workSymbols: false, embedder: false, youtubeWidget: false
@@ -313,9 +331,9 @@ export default function App() {
 
   const playTimerChime = () => {
     try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
       const duration = 5;
       
       const osc = ctx.createOscillator();
@@ -349,13 +367,13 @@ export default function App() {
       const silentMode = WORK_MODES.find(m => m.id === "silent");
       if (silentMode) setWorkMode(silentMode);
     }
-  }, [light]);
+  }, [light, workMode.id]);
 
   useEffect(() => {
     if (workMode.id === "silent" && light !== "stop") {
       setLight("stop");
     }
-  }, [workMode.id]);
+  }, [workMode.id, light]);
 
   const toggle = (key: Widget) => setVisible((v) => ({ ...v, [key]: !v[key] }));
   
@@ -377,7 +395,15 @@ export default function App() {
     return () => clearInterval(id);
   }, [running]);
 
-  useEffect(() => { if (swRunning) { swRef.current = setInterval(() => setSwMs((m) => m + 100), 100); } else { if (swRef.current) clearInterval(swRef.current); } return () => { if (swRef.current) clearInterval(swRef.current); }; }, [swRunning]);
+  useEffect(() => {
+    if (swRunning) {
+      swRef.current = setInterval(() => setSwMs((m) => m + 100), 100);
+    } else {
+      if (swRef.current) clearInterval(swRef.current);
+    }
+    return () => { if (swRef.current) clearInterval(swRef.current); };
+  }, [swRunning]);
+
   useEffect(() => { localStorage.setItem("classListObjects", JSON.stringify(students)); }, [students]);
   useEffect(() => { localStorage.setItem("timetable", JSON.stringify(timetable)); }, [timetable]);
   useEffect(() => { localStorage.setItem("notes", notes); }, [notes]);
@@ -388,14 +414,14 @@ export default function App() {
   useEffect(() => { localStorage.setItem("uoiThemePresetsRegistry", JSON.stringify(themePresets)); }, [themePresets]);
 
   const currentProfile: SubjectProfile = subjectProfiles[headlineLessonId] || {
-    materials: {}, learningObjective: "", centralIdea: "", loi1: "", loi2: "", loi3: "", activeLoiHighlight: 0, atls: "", subTasks: [], observations: {}
+    materials: {}, learningObjective: "", centralIdea: "", loi1: "", loi2: "", loi3: "", activeLoiHighlight: 0, atls: "", subTasks: [], observations: {}, activeTaskId: null
   };
 
   const updateProfileField = (field: keyof SubjectProfile, val: any) => {
     setSubjectProfiles(prev => ({
       ...prev,
       [headlineLessonId]: {
-        ...((prev[headlineLessonId] || { materials: {}, learningObjective: "", centralIdea: "", loi1: "", loi2: "", loi3: "", activeLoiHighlight: 0, atls: "", subTasks: [], observations: {} }) as SubjectProfile),
+        ...((prev[headlineLessonId] || { materials: {}, learningObjective: "", centralIdea: "", loi1: "", loi2: "", loi3: "", activeLoiHighlight: 0, atls: "", subTasks: [], observations: {}, activeTaskId: null }) as SubjectProfile),
         [field]: val
       }
     }));
@@ -423,7 +449,7 @@ export default function App() {
     setSubjectProfiles(prev => ({
       ...prev,
       uoi: {
-        ...((prev.uoi || { materials: {}, learningObjective: "", atls: "", subTasks: [], observations: {} }) as SubjectProfile),
+        ...((prev.uoi || { materials: {}, learningObjective: "", atls: "", subTasks: [], observations: {}, activeTaskId: null }) as SubjectProfile),
         centralIdea: data.centralIdea,
         loi1: data.loi1,
         loi2: data.loi2,
@@ -436,7 +462,7 @@ export default function App() {
   };
 
   const activeHeadlineItem = LESSON_TYPES.find(l => l.id === headlineLessonId);
-  const lc = { go: { bg: "#c8e6c9", border: C.sage, textColor: "#2d4a33", label: "ALL GOOD" }, slow: { bg: "#fff3cd", border: C.amber, textColor: "#4a3800", label: "SLOW DOWN" }, stop: { bg: "#f5c6c6", border: C.roses, textColor: "#4a1c1c", label: "STOP AND LISTEN" } }[light];
+  const lc = TRAFFIC_LIGHT_CONFIG[light];
   
   const swFormatted = (() => {
     const totalSec = Math.floor(swMs / 1000);
@@ -504,7 +530,7 @@ export default function App() {
   }, [youtubeUrl]);
 
   const downloadWeeklySummaryReport = () => {
-    let summaryText = `======= CLASSROOM WEEKLY COMPILATION SUMMARY SUMMARY PLAN =======\n`;
+    let summaryText = `======= CLASSROOM WEEKLY COMPILATION SUMMARY PLAN =======\n`;
     summaryText += `Generated: ${new Date().toLocaleDateString()}\n\n`;
     summaryText += `📝 SHARED GENERAL SESSION NOTES:\n${notes || "No general notes captured."}\n\n`;
     summaryText += `===========================================================================\n\n`;
@@ -512,7 +538,7 @@ export default function App() {
     LESSON_TYPES.forEach((lesson) => {
       const profile = subjectProfiles[lesson.id];
       if (profile && (profile.learningObjective?.trim() || profile.subTasks.length > 0 || profile.centralIdea?.trim() || (profile.observations && Object.keys(profile.observations).length > 0))) {
-        summaryText += `📚 SUBJECT focus ENTRY BLOCK: ${lesson.label.toUpperCase()}\n`;
+        summaryText += `📚 SUBJECT: ${lesson.label.toUpperCase()}\n`;
         summaryText += `-----------------------------------------------------------------\n`;
         if (lesson.id === "uoi") {
           summaryText += `❓ GUIDING QUESTION:\n ${profile.learningObjective?.trim() || "None mapped."}\n\n`;
@@ -588,12 +614,20 @@ export default function App() {
       {/* ── LEFT SIDEBAR STRIP ── */}
       {showSidebar && (
         <div style={{ width: "110px", borderRight: `2px solid ${C.cardBorder}`, background: C.card, padding: "24px 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", boxSizing: "border-box", overflowY: "auto", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>
-          <button 
-            onClick={() => { if(confirm("Clear all timetable entries?")) setTimetable([]); }}
-            style={{ ...btnGhost, fontSize: "11px", padding: "6px 8px", borderRadius: "10px", width: "100%", whiteSpace: "nowrap" }}
-          >
-            🗑️ Clear All
-          </button>
+          {confirmClearActive ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%", background: "#f8d7da", border: `1px solid ${C.roses}`, padding: "6px", borderRadius: "8px" }}>
+              <span style={{ fontSize: "11px", fontWeight: "bold", textAlign: "center", color: C.roseDark }}>Confirm?</span>
+              <button onClick={() => { setTimetable([]); setConfirmClearActive(false); }} style={{ ...btnRose, padding: "4px", fontSize: "11px", borderRadius: "6px" }}>Yes</button>
+              <button onClick={() => setConfirmClearActive(false)} style={{ ...btnGhost, padding: "4px", fontSize: "11px", borderRadius: "6px" }}>No</button>
+            </div>
+          ) : (
+            <button 
+              onClick={() => setConfirmClearActive(true)}
+              style={{ ...btnGhost, fontSize: "11px", padding: "6px 8px", borderRadius: "10px", width: "100%", whiteSpace: "nowrap" }}
+            >
+              🗑️ Clear All
+            </button>
+          )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: "14px", width: "100%", alignItems: "center" }}>
             {timetable.map((item) => {
@@ -632,19 +666,48 @@ export default function App() {
       {/* ── MAIN AREA ── */}
       <div style={{ flex: 1, padding: "32px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "24px", minWidth: 0, maxWidth: "100%" }}>
         
-        {/* Switchdesk Toolbar Switches */}
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", background: C.card, padding: "12px 18px", borderRadius: "16px", border: `1.5px solid ${C.cardBorder}`, alignItems: "center", width: "100%", boxSizing: "border-box" }}>
-          {WIDGETS.map((key) => (
-            <button key={key} onClick={() => toggle(key)} style={{ ...btnGhost, fontSize: "13px", padding: "8px 14px", opacity: visible[key] ? 1 : 0.5 }}>{WIDGET_LABELS[key]}</button>
-          ))}
-          <button onClick={() => { setIsEditingMaterials(!isEditingMaterials); setIsEditingPresets(false); }} style={{ ...btnGhost, fontWeight: "500", fontSize: "13px", padding: "8px 14px", borderRadius: "50px", border: isEditingMaterials ? "1.5px solid #000" : "1.5px dashed #000", background: isEditingMaterials ? C.highlight : "none" }}>
-            {isEditingMaterials ? "🔒 Lock Materials Editor" : "🛠️ Setup Active Desk Materials"}
+        {/* Change 1: Compact Categorized Group Menu Workspace */}
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", background: C.card, padding: "12px 18px", borderRadius: "16px", border: `1.5px solid ${C.cardBorder}`, alignItems: "center", width: "100%", boxSizing: "border-box", position: "relative" }}>
+          {WIDGET_GROUPS.map((group) => {
+            const isMenuOpen = activeGroupMenu === group.label;
+            return (
+              <div key={group.label} style={{ position: "relative" }}>
+                <button 
+                  onClick={() => setActiveGroupMenu(isMenuOpen ? null : group.label)} 
+                  style={{ ...btnGhost, fontSize: "14px", padding: "8px 16px", background: isMenuOpen ? C.highlight : C.bg, border: isMenuOpen ? "1.5px solid #000" : `1.5px solid ${C.cardBorder}`, borderRadius: "12px", display: "flex", alignItems: "center", gap: "6px" }}
+                >
+                  <span>{group.emoji}</span>
+                  <span style={{ fontWeight: "700" }}>{group.label}</span>
+                  <span style={{ fontSize: "10px", opacity: 0.7 }}>{isMenuOpen ? "▲" : "▼"}</span>
+                </button>
+                {isMenuOpen && (
+                  <div style={{ position: "absolute", top: "45px", left: 0, background: "#fff", border: `1.5px solid ${C.cardBorder}`, borderRadius: "12px", padding: "8px", display: "flex", flexDirection: "column", gap: "4px", boxShadow: "0 6px 16px rgba(0,0,0,0.1)", zIndex: 99, minWidth: "190px" }}>
+                    {group.widgets.map((wKey) => (
+                      <button 
+                        key={wKey} 
+                        onClick={() => { toggle(wKey); setActiveGroupMenu(null); }} 
+                        style={{ ...btnBase, padding: "8px 12px", fontSize: "13px", textAlign: "left", width: "100%", background: visible[wKey] ? C.highlight : "none", borderRadius: "8px", color: C.text, display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                      >
+                        <span>{WIDGET_LABELS[wKey].split(" ").slice(1).join(" ")}</span>
+                        <span>{visible[wKey] ? "🟢" : "⚪"}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          
+          <div style={{ height: "24px", width: "1.5px", background: C.cardBorder, margin: "0 4px" }} />
+
+          <button onClick={() => { setIsEditingMaterials(!isEditingMaterials); setIsEditingPresets(false); }} style={{ ...btnGhost, fontWeight: "700", fontSize: "13px", padding: "8px 14px", borderRadius: "12px", border: isEditingMaterials ? "1.5px solid #000" : "1.5px dashed #000", background: isEditingMaterials ? C.highlight : "none" }}>
+            {isEditingMaterials ? "🔒 Lock Materials" : "🛠️ Desk Setup"}
           </button>
-          <button onClick={() => { setIsEditingPresets(!isEditingPresets); setIsEditingMaterials(false); }} style={{ ...btnGhost, fontWeight: "500", fontSize: "13px", padding: "8px 14px", borderRadius: "50px", border: isEditingPresets ? "1.5px solid #000" : "1.5px dashed #000", background: isEditingPresets ? C.highlight : "none" }}>
+          <button onClick={() => { setIsEditingPresets(!isEditingPresets); setIsEditingMaterials(false); }} style={{ ...btnGhost, fontWeight: "700", fontSize: "13px", padding: "8px 14px", borderRadius: "12px", border: isEditingPresets ? "1.5px solid #000" : "1.5px dashed #000", background: isEditingPresets ? C.highlight : "none" }}>
             🌍 Theme Presets
           </button>
           <button onClick={downloadWeeklySummaryReport} style={{ ...btnSage, fontSize: "13px", padding: "8px 16px", marginLeft: "auto", background: "#4e7a60" }}>
-            📥 Export Weekly Text Summary File
+            📥 Export File Summary
           </button>
         </div>
 
@@ -708,26 +771,43 @@ export default function App() {
           return (
             <>
               <div style={{ ...cardStyle, background: activeHeadlineItem.bg, border: `2.5px solid ${activeHeadlineItem.color}` }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "20px", borderBottom: `2px solid ${activeHeadlineItem.color}`, paddingBottom: "18px", width: "100%" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "14px", flexShrink: 0 }}>
+                {/* Fixed Alignment Header Container */}
+                <div style={{ 
+                  display: "grid", 
+                  gridTemplateColumns: "1fr auto 1fr", 
+                  alignItems: "center", 
+                  gap: "20px", 
+                  borderBottom: `2px solid ${activeHeadlineItem.color}`, 
+                  paddingBottom: "18px", 
+                  width: "100%",
+                  boxSizing: "border-box"
+                }}>
+                  {/* Left Column: Subject & Icon */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px", justifySelf: "start" }}>
                     <LessonIcon id={activeHeadlineItem.id} size={48} />
-                    <h1 style={{ margin: 0, fontSize: "38px", fontWeight: "800", color: "#000", letterSpacing: "-0.5px", textTransform: "uppercase" }}>{activeHeadlineItem.label}</h1>
+                    <h1 style={{ margin: 0, fontSize: "32px", fontWeight: "800", color: "#000", letterSpacing: "-0.5px", textTransform: "uppercase" }}>
+                      {activeHeadlineItem.label}
+                    </h1>
                   </div>
 
-                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center", flexGrow: 1, minWidth: "200px" }}>
+                  {/* Center Column: Desk Materials */}
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center" }}>
                     {ALL_MATERIALS.map((m) => {
                       if (!currentProfile.materials[m.id]) return null;
                       return (
-                        <div key={m.id} style={{ borderRadius: "16px", padding: "12px", width: "130px", background: "#fff", border: "2.5px solid #000", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                          <MaterialIcon id={m.id} size={32} />
-                          <span style={{ fontSize: "13px", color: "#000", fontWeight: "700", textAlign: "center", whiteSpace: "nowrap" }}>{m.name}</span>
+                        <div key={m.id} style={{ borderRadius: "14px", padding: "10px", width: "115px", background: "#fff", border: "2px solid #000", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", boxSizing: "border-box" }}>
+                          <MaterialIcon id={m.id} size={28} />
+                          <span style={{ fontSize: "12px", color: "#000", fontWeight: "700", textAlign: "center", whiteSpace: "nowrap" }}>{m.name}</span>
                         </div>
                       );
                     })}
                   </div>
 
-                  <div style={{ flexShrink: 0 }}>
-                    <span style={{ fontFamily: font, fontSize: "28px", fontWeight: "500", color: C.text, whiteSpace: "nowrap" }}>{isMaths ? mathDate : customSpelledDate}</span>
+                  {/* Right Column: Date Representation */}
+                  <div style={{ justifySelf: "end" }}>
+                    <span style={{ fontFamily: font, fontSize: "24px", fontWeight: "700", color: C.text, whiteSpace: "nowrap" }}>
+                      {isMaths ? mathDate : customSpelledDate}
+                    </span>
                   </div>
                 </div>
 
@@ -744,14 +824,46 @@ export default function App() {
                     </div>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      <span style={{ ...labelStyle, fontSize: "11px", color: "#000" }}>🔍 Lines of Inquiry:</span>
+                      <span style={{ ...labelStyle, fontSize: "11px", color: "#000" }}>🔍 Lines of Inquiry (Click to spotlight active target):</span>
                       {[1, 2, 3].map((num) => {
                         const loiKey = `loi${num}` as keyof SubjectProfile;
                         const isHighlighted = currentProfile.activeLoiHighlight === num;
                         return (
-                          <div key={num} onClick={() => updateProfileField("activeLoiHighlight", isHighlighted ? 0 : num)} style={{ display: "flex", alignItems: "center", gap: "12px", background: "#fff", padding: "10px 16px", borderRadius: "12px", border: isHighlighted ? "3.5px solid #000" : `1.5px solid ${C.cardBorder}`, cursor: "pointer", width: "100%", boxSizing: "border-box" }}>
-                            <span style={{ fontWeight: "800", fontSize: "14px", color: activeHeadlineItem.color }}>LOI {num}:</span>
-                            <input value={(currentProfile[loiKey] as string) || ""} onChange={(e) => { e.stopPropagation(); updateProfileField(loiKey, e.target.value); }} onClick={(e) => e.stopPropagation()} style={{ background: "none", border: "none", outline: "none", width: "100%", fontSize: "16px", fontWeight: "700", color: "#000", fontFamily: font }} />
+                          <div 
+                            key={num} 
+                            onClick={() => updateProfileField("activeLoiHighlight", isHighlighted ? 0 : num)} 
+                            style={{ 
+                              display: "flex", 
+                              alignItems: "center", 
+                              gap: "14px", 
+                              background: isHighlighted ? `${activeHeadlineItem.color}15` : "#fff", 
+                              padding: "14px 18px", 
+                              borderRadius: "14px", 
+                              border: isHighlighted ? `3px solid ${activeHeadlineItem.color}` : `1.5px solid ${C.cardBorder}`, 
+                              cursor: "pointer", 
+                              width: "100%", 
+                              boxSizing: "border-box",
+                              boxShadow: isHighlighted ? "0 4px 12px rgba(0,0,0,0.08)" : "none",
+                              transition: "all 0.15s ease-in-out"
+                            }}
+                          >
+                            <span style={{ fontWeight: "900", fontSize: "15px", color: activeHeadlineItem.color, whiteSpace: "nowrap" }}>LOI {num}:</span>
+                            <input 
+                              value={(currentProfile[loiKey] as string) || ""} 
+                              onChange={(e) => { e.stopPropagation(); updateProfileField(loiKey, e.target.value); }} 
+                              onClick={(e) => e.stopPropagation()} 
+                              style={{ 
+                                background: "none", 
+                                border: "none", 
+                                outline: "none", 
+                                width: "100%", 
+                                fontSize: "16px", 
+                                fontWeight: isHighlighted ? "800" : "700", 
+                                color: "#000", 
+                                fontFamily: font 
+                              }} 
+                            />
+                            {isHighlighted && <span style={{ fontSize: "18px", flexShrink: 0 }}>🎯</span>}
                           </div>
                         );
                       })}
@@ -803,18 +915,45 @@ export default function App() {
           <div style={{ ...cardStyle, border: timetable.length > 0 && activeHeadlineItem ? `2.5px solid ${activeHeadlineItem.color}` : `1.5px solid ${C.cardBorder}`, background: "#fff" }}>
             <button style={closeBtn} onClick={() => toggle("taskBreakdown")}>×</button>
             <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-              <input value={newSubTaskText} onChange={(e) => setNewSubTaskText(e.target.value)} onKeyDown={(e) => { if(e.key === "Enter") { e.preventDefault(); addSubTask(); } }} placeholder="Add step instruction..." style={{ ...inputStyle, padding: "8px 14px" }} />
+              <input value={newSubTaskText} onChange={(e) => setNewSubTaskText(e.target.value)} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if(e.key === "Enter") { e.preventDefault(); addSubTask(); } }} placeholder="Add step instruction..." style={{ ...inputStyle, padding: "8px 14px" }} />
               <button onClick={addSubTask} style={{ ...btnSlate, padding: "8px 20px" }}>+ Add Step</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
               {currentProfile.subTasks.length > 0 ? (
-                currentProfile.subTasks.map((task) => (
-                  <div key={task.id} style={{ display: "flex", alignItems: "center", gap: "12px", background: task.done ? C.highlight : C.bg, padding: "10px 16px", borderRadius: "12px", opacity: task.done ? 0.5 : 1 }}>
-                    <input type="checkbox" checked={task.done} onChange={() => updateProfileField("subTasks", currentProfile.subTasks.map(t => t.id === task.id ? { ...t, done: !t.done } : t))} style={{ width: "20px", height: "20px", cursor: "pointer" }} />
-                    <span style={{ fontSize: "16px", fontWeight: "700", color: "#000", textDecoration: task.done ? "line-through" : "none", flex: 1 }}>{task.text}</span>
-                    <button onClick={() => updateProfileField("subTasks", currentProfile.subTasks.filter(t => t.id !== task.id))} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: "16px" }}>×</button>
-                  </div>
-                ))
+                currentProfile.subTasks.map((task) => {
+                  const isTaskFocused = currentProfile.activeTaskId === task.id;
+                  const activeAccent = activeHeadlineItem?.color || C.slate;
+                  return (
+                    <div 
+                      key={task.id} 
+                      onClick={() => updateProfileField("activeTaskId", isTaskFocused ? null : task.id)}
+                      style={{ 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: "14px", 
+                        background: task.done ? C.highlight : isTaskFocused ? activeAccent : C.bg, 
+                        padding: isTaskFocused ? "16px 20px" : "10px 16px", 
+                        borderRadius: "12px", 
+                        opacity: task.done ? 0.5 : 1,
+                        border: isTaskFocused ? "2.5px solid #000" : `1px solid ${C.cardBorder}`,
+                        boxShadow: isTaskFocused ? "0 4px 12px rgba(0,0,0,0.12)" : "none",
+                        cursor: "pointer",
+                        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                      }}
+                    >
+                      <input 
+                        type="checkbox" 
+                        checked={task.done} 
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => updateProfileField("subTasks", currentProfile.subTasks.map(t => t.id === task.id ? { ...t, done: !t.done } : t))} 
+                        style={{ width: "20px", height: "20px", cursor: "pointer" }} 
+                      />
+                      <span style={{ fontSize: isTaskFocused ? "19px" : "16px", fontWeight: "700", color: isTaskFocused && !task.done ? "#fff" : "#000", textDecoration: task.done ? "line-through" : "none", flex: 1, transition: "font-size 0.2s" }}>{task.text}</span>
+                      {isTaskFocused && !task.done && <span style={{ fontSize: "14px", color: "#fff", background: "rgba(0,0,0,0.2)", padding: "4px 8px", borderRadius: "6px", fontWeight: "bold" }}>CURRENT STEP 🎯</span>}
+                      <button onClick={(e) => { e.stopPropagation(); updateProfileField("subTasks", currentProfile.subTasks.filter(t => t.id !== task.id)); }} style={{ background: "none", border: "none", color: isTaskFocused ? "#fff" : C.muted, cursor: "pointer", fontSize: "16px" }}>×</button>
+                    </div>
+                  );
+                })
               ) : (
                 <span style={{ color: C.muted, fontSize: "13px", fontStyle: "italic" }}>No visual steps added.</span>
               )}
@@ -832,7 +971,7 @@ export default function App() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginTop: "12px" }}>
                 <button onClick={() => setIsEmbedInputCollapsed(!isEmbedInputCollapsed)} style={{ ...btnGhost, fontSize: "11px", padding: "4px 12px" }}>{isEmbedInputCollapsed ? "⚙️ Show Code Box" : "Hide Input Code Box"}</button>
               </div>
-              {!isEmbedInputCollapsed && <textarea defaultValue={embedHtml} onBlur={(e) => setEmbedHtml(e.target.value)} placeholder="Paste iframe embed code target framework..." style={{ ...inputStyle, height: "70px", fontFamily: "monospace", fontSize: "13px" }} />}
+              {!isEmbedInputCollapsed && <textarea defaultValue={embedHtml} onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) => setEmbedHtml(e.target.value)} placeholder="Paste iframe embed code target framework..." style={{ ...inputStyle, height: "70px", fontFamily: "monospace", fontSize: "13px" }} />}
               {MemoizedIframeContainer}
             </div>
           )}
@@ -844,7 +983,7 @@ export default function App() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginTop: "12px" }}>
                 <button onClick={() => setIsYoutubeInputCollapsed(!isYoutubeInputCollapsed)} style={{ ...btnGhost, fontSize: "11px", padding: "4px 12px" }}>{isYoutubeInputCollapsed ? "⚙️ Show URL Input" : "Hide Link Input Box"}</button>
               </div>
-              {!isYoutubeInputCollapsed && <input type="text" defaultValue={youtubeUrl} onBlur={(e) => setYoutubeUrl(e.target.value)} placeholder="Paste standard YouTube video URL share link..." style={inputStyle} />}
+              {!isYoutubeInputCollapsed && <input type="text" defaultValue={youtubeUrl} onBlur={(e: React.FocusEvent<HTMLInputElement>) => setYoutubeUrl(e.target.value)} placeholder="Paste standard YouTube video URL share link..." style={inputStyle} />}
               {youtubeEmbedId ? (
                 <div style={{ width: "100%", position: "relative", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", background: "#000", border: `2px solid ${C.cardBorder}` }}>
                   <iframe style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }} src={`https://www.youtube.com/embed/${youtubeEmbedId}`} title="YouTube player" allowFullScreen />
@@ -858,12 +997,12 @@ export default function App() {
             <div style={cardStyle}>
               <button style={closeBtn} onClick={() => toggle("timetable")}>×</button>
               <div style={{ background: C.highlight, padding: "12px", borderRadius: "14px", display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginTop: "12px" }}>
-                <select onChange={(e) => loadTemplate(e.target.value)} defaultValue="" style={{ ...inputStyle, width: "auto", flex: 1, padding: "6px 10px", fontSize: "14px" }}>
+                <select onChange={(e: React.ChangeEvent<HTMLSelectElement>) => loadTemplate(e.target.value)} defaultValue="" style={{ ...inputStyle, width: "auto", flex: 1, padding: "6px 10px", fontSize: "14px" }}>
                   <option value="" disabled>-- Load Saved Template --</option>
                   {Object.keys(templates).map(name => <option key={name} value={name}>{name}</option>)}
                 </select>
                 <div style={{ display: "flex", gap: "6px", flex: "1 1 180px" }}>
-                  <input value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} placeholder="Name Plan..." style={{ ...inputStyle, padding: "6px 10px", fontSize: "13px" }} />
+                  <input value={newTemplateName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewTemplateName(e.target.value)} placeholder="Name Plan..." style={{ ...inputStyle, padding: "6px 10px", fontSize: "13px" }} />
                   <button style={{ ...btnSage, padding: "6px 12px", fontSize: "12px", borderRadius: "10px" }} onClick={saveCurrentAsTemplate}>Save</button>
                 </div>
               </div>
@@ -903,7 +1042,7 @@ export default function App() {
               <button style={closeBtn} onClick={() => toggle("timer")}>×</button>
               <CircleTimer pct={seconds / (minutes * 60 || 1)} minutes={minutes} seconds={seconds} />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "14px", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "14px" }}>
-                <input type="number" value={minutes} min={1} onChange={(e) => { const v = Math.max(1, Number(e.target.value)); setMinutes(v); if (!running) setSeconds(v * 60); }} style={{ ...inputStyle, width: "85px", fontSize: "16px", fontWeight: "bold", textAlign: "center" }} />
+                <input type="number" value={minutes} min={1} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { const v = Math.max(1, Number(e.target.value)); setMinutes(v); if (!running) setSeconds(v * 60); }} style={{ ...inputStyle, width: "85px", fontSize: "16px", fontWeight: "bold", textAlign: "center" }} />
                 <button style={btnSage} onClick={() => setRunning(true)} disabled={running}>▶ START</button>
                 <button style={btnRose} onClick={() => setRunning(false)}>⏸ STOP</button>
                 <button style={btnGhost} onClick={() => { setRunning(false); setSeconds(minutes * 60); }}>↺ RESET</button>
@@ -944,7 +1083,7 @@ export default function App() {
 
           {/* WORK MODES */}
           {visible.workSymbols && (
-            <div style={cardStyle}>
+            <div style={{ ...cardStyle }}>
               <button style={closeBtn} onClick={() => toggle("workSymbols")}>×</button>
               <div style={{ background: workMode.bg, border: `2px solid ${workMode.color}`, borderRadius: "14px", padding: "24px", textAlign: "center", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", marginTop: "12px" }}>
                 <div style={{ fontSize: "48px" }}>{workMode.icon}</div>
@@ -975,7 +1114,7 @@ export default function App() {
           {visible.notes && (
             <div style={cardStyle}>
               <button style={closeBtn} onClick={() => toggle("notes")}>×</button>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Type shared lesson summary notes here…" style={{ ...inputStyle, flex: 1, minHeight: "220px", resize: "none", marginTop: "12px" }} />
+              <textarea value={notes} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)} placeholder="Type shared lesson summary notes here…" style={{ ...inputStyle, flex: 1, minHeight: "220px", resize: "none", marginTop: "12px" }} />
             </div>
           )}
 
@@ -984,25 +1123,25 @@ export default function App() {
             <div style={cardStyle}>
               <button style={closeBtn} onClick={() => toggle("classList")}>×</button>
               <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-                <input value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="Name…" onKeyDown={(e) => { if (e.key === "Enter" && studentName.trim()) { e.preventDefault(); setStudents([...students, { name: studentName.trim(), present: true }]); setStudentName(""); } }} style={inputStyle} />
+                <input value={studentName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStudentName(e.target.value)} placeholder="Name…" onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter" && studentName.trim()) { e.preventDefault(); setStudents([...students, { name: studentName.trim(), present: true }]); setStudentName(""); } }} style={inputStyle} />
                 <button style={btnSlate} onClick={() => { if (studentName.trim()) { setStudents([...students, { name: studentName.trim(), present: true }]); setStudentName(""); } }}>+</button>
               </div>
               
               <div style={{ display: "flex", gap: "6px" }}>
                 <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1, border: "1px dashed #000" }} onClick={() => { if (students.length === 0) return alert("List is empty!"); const textData = students.map(s => s.name).join("\n"); const blob = new Blob([textData], { type: "text/plain" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "class-list.txt"; link.click(); URL.revokeObjectURL(url); }}>💾 Save File</button>
                 <label style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1, border: "1px dashed #000", textAlign: "center", cursor: "pointer" }}>📂 Load File
-                  <input type="file" accept=".txt" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = (evt) => { const text = evt.target?.result as string; if (text) { const names = text.split("\n").map(n => n.trim()).filter(n => n.length > 0); if (names.length > 0) setStudents(names.map(name => ({ name, present: true }))); } }; reader.readAsText(file); }} />
+                  <input type="file" accept=".txt" style={{ display: "none" }} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = (evt) => { const text = evt.target?.result as string; if (text) { const names = text.split("\n").map(n => n.trim()).filter(n => n.length > 0); if (names.length > 0) setStudents(names.map(name => ({ name, present: true }))); } }; reader.readAsText(file); }} />
                 </label>
               </div>
               <div style={{ background: C.highlight, padding: "12px", borderRadius: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   <span style={{ fontSize: "13px", fontWeight: "bold" }}>Group Size:</span>
-                  <input type="number" min={2} max={10} value={groupSize} onChange={(e) => setGroupSize(Math.max(2, Number(e.target.value)))} style={{ ...inputStyle, width: "65px", padding: "4px 8px" }} />
+                  <input type="number" min={2} max={10} value={groupSize} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGroupSize(Math.max(2, Number(e.target.value)))} style={{ ...inputStyle, width: "65px", padding: "4px 8px" }} />
                   <button onClick={generateClassGroups} style={{ ...btnSage, padding: "6px 14px", fontSize: "12px", borderRadius: "8px", flex: 1 }}>👥 Generate Groups</button>
                 </div>
                 {generatedGroups.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "150px", overflowY: "auto", background: "#fff", padding: "10px", borderRadius: "8px", border: `1.5px solid ${C.cardBorder}` }}>
-                    {generatedGroups.map((grp, gIdx) => (
+                    {generatedGroups.map((grp: string[], gIdx: number) => (
                       <div key={gIdx} style={{ fontSize: "13px", fontWeight: "700", color: "#000", borderBottom: "1px solid #f2ede4", paddingBottom: "4px" }}>
                         Team {gIdx + 1}: <span style={{ fontWeight: "normal", color: C.text }}>{grp.join(", ")}</span>
                       </div>
@@ -1013,11 +1152,11 @@ export default function App() {
               <button style={{ ...btnAmber, alignSelf: "stretch" }} onClick={() => { const presentOnes = students.filter(s => s.present); if (presentOnes.length > 0) setChosenStudent(presentOnes[Math.floor(Math.random() * presentOnes.length)].name); }}>🎲 PICK RANDOM PRESENT STUDENT</button>
               {chosenStudent && <div style={{ background: "#dce8f5", padding: "12px", borderRadius: "10px", fontWeight: "800", fontSize: "18px", textAlign: "center" }}>⭐ {chosenStudent}</div>}
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", maxHeight: "100px", overflowY: "auto", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "8px" }}>
-                {students.map((s, i) => (
+                {students.map((s: Student, i: number) => (
                   <span key={i} style={{ background: s.present ? C.highlight : "#f5c6c6", border: s.present ? `1px solid ${C.cardBorder}` : `1px solid ${C.roses}`, padding: "4px 8px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px", opacity: s.present ? 1 : 0.6 }}>
-                    <input type="checkbox" checked={s.present} onChange={() => setStudents(students.map((st, idx) => idx === i ? { ...st, present: !st.present } : st))} style={{ cursor: "pointer" }} />
+                    <input type="checkbox" checked={s.present} onChange={() => setStudents(students.map((st: Student, idx: number) => idx === i ? { ...st, present: !st.present } : st))} style={{ cursor: "pointer" }} />
                     <span style={{ fontWeight: "700", textDecoration: s.present ? "none" : "line-through" }}>{s.name}</span>
-                    <button onClick={() => setStudents(students.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}>×</button>
+                    <button onClick={() => setStudents(students.filter((_, idx: number) => idx !== i))} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}>×</button>
                   </span>
                 ))}
               </div>
@@ -1029,19 +1168,19 @@ export default function App() {
             <div style={cardStyle}>
               <button style={closeBtn} onClick={() => toggle("scoreboard")}>×</button>
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", flex: 1, alignItems: "center", marginTop: "12px" }}>
-                {teams.map((team) => (
+                {teams.map((team: ScoreTeam) => (
                   <div key={team.id} style={{ flex: "1 1 100px", background: C.bg, border: `2px solid ${team.color}`, borderRadius: "14px", padding: "10px", textAlign: "center" }}>
-                    <input value={team.name} onChange={(e) => setTeams(teams.map(t => t.id === team.id ? { ...t, name: e.target.value } : t))} style={{ fontWeight: "700", color: team.color, fontSize: "14px", background: "none", border: "none", textAlign: "center", width: "100%", outline: "none", fontFamily: font }} />
+                    <input value={team.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTeams(teams.map(t => t.id === team.id ? { ...t, name: e.target.value } : t))} style={{ fontWeight: "700", color: team.color, fontSize: "14px", background: "none", border: "none", textAlign: "center", width: "100%", outline: "none", fontFamily: font }} />
                     <div style={{ fontSize: "36px", fontWeight: "800", margin: "4px 0" }}>{team.score}</div>
                     <div style={{ display: "flex", justifyContent: "center", gap: "6px" }}>
-                      <button onClick={() => setTeams(teams.map((t) => t.id === team.id ? { ...t, score: t.score + 1 } : t))} style={{ ...btnBase, padding: "4px 10px" }}>+</button>
-                      <button onClick={() => setTeams(teams.map((t) => t.id === team.id ? { ...t, score: Math.max(0, t.score - 1) } : t))} style={{ ...btnGhost, padding: "4px 10px" }}>-</button>
+                      <button onClick={() => setTeams(teams.map((t: ScoreTeam) => t.id === team.id ? { ...t, score: t.score + 1 } : t))} style={{ ...btnBase, padding: "4px 10px" }}>+</button>
+                      <button onClick={() => setTeams(teams.map((t: ScoreTeam) => t.id === team.id ? { ...t, score: Math.max(0, t.score - 1) } : t))} style={{ ...btnGhost, padding: "4px 10px" }}>-</button>
                     </div>
                   </div>
                 ))}
               </div>
               <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
-                <input value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} placeholder="New team name…" onKeyDown={(e) => { if (e.key === "Enter" && newTeamName.trim()) { e.preventDefault(); setTeams([...teams, { id: Date.now(), name: newTeamName.trim(), score: 0, color: TEAM_COLORS[teams.length % TEAM_COLORS.length] }]); setNewTeamName(""); } }} style={{ ...inputStyle, padding: "6px 10px" }} />
+                <input value={newTeamName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewTeamName(e.target.value)} placeholder="New team name…" onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter" && newTeamName.trim()) { e.preventDefault(); setTeams([...teams, { id: Date.now(), name: newTeamName.trim(), score: 0, color: TEAM_COLORS[teams.length % TEAM_COLORS.length] }]); setNewTeamName(""); } }} style={{ ...inputStyle, padding: "6px 10px" }} />
                 <button style={btnLavender} onClick={() => { if (newTeamName.trim()) { setTeams([...teams, { id: Date.now(), name: newTeamName.trim(), score: 0, color: TEAM_COLORS[teams.length % TEAM_COLORS.length] }]); setNewTeamName(""); } }}>+</button>
               </div>
             </div>
