@@ -853,20 +853,60 @@ export default function App() {
     stopwatch: false, notes: false, classList: false, scoreboard: false, dice: false,
     workSymbols: false, embedder: false, youtubeWidget: false
   });
+const playTimerChime = () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      const duration = 5;
+      
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.setValueAtTime(880.00, ctx.currentTime + 0.25);
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime + 0.5);
+      osc.frequency.setValueAtTime(880.00, ctx.currentTime + 0.75);
+      
+      gainNode.gain.setValueAtTime(0.25, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+      
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
+    } catch (e) {
+      console.warn("Audio context error", e);
+    }
+  };
 
   const toggle = (key: Widget) => setVisible((v) => ({ ...v, [key]: !v[key] }));
 
   useEffect(() => { const id = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(id); }, []);
-  useEffect(() => {
+  
+   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => {
-      setSeconds(s => { if (s <= 1) { clearInterval(id); setRunning(false); return 0; } return s - 1; });
+      setSeconds((s) => {
+        if (s <= 1) {
+          setRunning(false);
+          playTimerChime();
+          return 0;
+        }
+        return s - 1;
+      });
     }, 1000);
     return () => clearInterval(id);
   }, [running]);
+  
   useEffect(() => {
-    if (swRunning) { swRef.current = setInterval(() => setSwMs((m) => m + 100), 100); }
-    else { if (swRef.current) clearInterval(swRef.current); }
+    if (swRunning) {
+      swRef.current = setInterval(() => setSwMs((m) => m + 100), 100);
+    } else {
+      if (swRef.current) clearInterval(swRef.current);
+    }
     return () => { if (swRef.current) clearInterval(swRef.current); };
   }, [swRunning]);
 
