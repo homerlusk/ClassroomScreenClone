@@ -268,7 +268,89 @@ function DiceFace({ value }: { value: number }) {
 const DICE_DOTS: Record<number, [number, number][]> = { 1: [[50, 50]], 2: [[25, 25], [75, 75]], 3: [[25, 25], [50, 50], [75, 75]], 4: [[25, 25], [75, 25], [25, 75], [75, 75]], 5: [[25, 25], [75, 25], [50, 50], [25, 75], [75, 75]], 6: [[25, 25], [75, 25], [25, 50], [75, 50], [25, 75], [75, 75]] };
 const WORK_MODES = [ { id: "silent", icon: "🔇", label: "Silent Work", color: C.roses, bg: "#f5c6c6" }, { id: "whisper", icon: "🤫", label: "Whisper Only", color: C.amber, bg: "#fff3cd" }, { id: "partner", icon: "🗣️", label: "Partner Talk", color: C.sage, bg: "#c8e6c9" }, { id: "group", icon: "👥", label: "Group Work", color: C.slate, bg: "#dce8f5" }, { id: "free", icon: "🎉", label: "Free Time", color: C.lavender, bg: "#ede8f5" } ];
 ;
+function ProgressTrackerWidget({
+  toggle, headlineLessonId, subjectProfiles, setSubjectProfiles, students
+}: {
+  toggle: (key: Widget) => void;
+  headlineLessonId: string;
+  subjectProfiles: Record<string, SubjectProfile>;
+  setSubjectProfiles: React.Dispatch<React.SetStateAction<Record<string, SubjectProfile>>>;
+  students: Student[];
+}) {
+  const [localLessonId, setLocalLessonId] = useState<string>("");
+  const resolvedLessonId = localLessonId || headlineLessonId;
+  const resolvedLesson = LESSON_TYPES.find(l => l.id === resolvedLessonId);
+  const resolvedProfile: SubjectProfile = subjectProfiles[resolvedLessonId] || {
+    materials: {}, learningObjective: "", centralIdea: "", loi1: "", loi2: "", loi3: "",
+    activeLoiHighlight: 0, atls: "", subTasks: [], observations: {}, activeTaskId: null
+  };
 
+  const updateObs = (name: string, status: "green" | "amber" | "red" | "none" | "absent", notes: string) => {
+    const updatedObs = { ...(resolvedProfile.observations || {}), [name]: { status, notes } };
+    setSubjectProfiles(prev => ({
+      ...prev,
+      [resolvedLessonId]: { ...((prev[resolvedLessonId] || resolvedProfile) as SubjectProfile), observations: updatedObs }
+    }));
+  };
+
+  return (
+    <div style={cardStyle}>
+      <button onClick={() => toggle("progressTracker")} style={closeBtn}>×</button>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "12px" }}>
+        <span style={labelStyle}>📊 Tracking:</span>
+        <select
+          value={resolvedLessonId}
+          onChange={(e) => setLocalLessonId(e.target.value)}
+          style={{ ...inputStyle, width: "auto", flex: 1 }}
+        >
+          <option value="" disabled>-- Select a subject --</option>
+          {LESSON_TYPES.map(lt => (
+            <option key={lt.id} value={lt.id}>{lt.label}</option>
+          ))}
+        </select>
+        {resolvedLesson && <LessonIcon id={resolvedLesson.id} size={24} />}
+      </div>
+
+      {students.length === 0 ? (
+        <p style={{ color: C.muted, fontStyle: "italic", fontSize: "14px", margin: 0 }}>
+          No students in roster. Open <b>👥 Roster & Groups</b> and add students first.
+        </p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "340px", overflowY: "auto", paddingRight: "4px" }}>
+          {students.map((student) => {
+            const obs = resolvedProfile.observations?.[student.name] || { status: "none", notes: "" };
+            const statusColor = obs.status === "green" ? C.sage : obs.status === "amber" ? C.amber : obs.status === "red" ? C.roses : C.cardBorder;
+            return (
+              <div key={student.name} style={{ display: "flex", alignItems: "center", gap: "8px", background: C.bg, padding: "8px 12px", borderRadius: "10px", border: `2px solid ${statusColor}` }}>
+                <span style={{ fontWeight: "600", fontSize: "14px", color: student.present ? C.text : C.muted, minWidth: "100px" }}>
+                  {student.name}{!student.present && <span style={{ color: C.roses }}> (Abs)</span>}
+                </span>
+                <input
+                  type="text"
+                  placeholder="Notes..."
+                  value={obs.notes}
+                  style={{ ...inputStyle, flex: 1, padding: "4px 8px", fontSize: "13px" }}
+                  onChange={(e) => updateObs(student.name, obs.status as any, e.target.value)}
+                />
+                <select
+                  value={obs.status}
+                  style={{ ...inputStyle, width: "130px", padding: "4px 6px", fontSize: "13px" }}
+                  onChange={(e) => updateObs(student.name, e.target.value as any, obs.notes)}
+                >
+                  <option value="none">⚪ Not set</option>
+                  <option value="green">🟢 Mastered</option>
+                  <option value="amber">🟡 Progressing</option>
+                  <option value="red">🔴 Support</option>
+                  <option value="absent">❌ Absent</option>
+                </select>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 export default function App() {
   const [time, setTime] = useState<Date>(new Date());
   const [seconds, setSeconds] = useState<number>(300);
@@ -303,6 +385,13 @@ export default function App() {
       return saved ? JSON.parse(saved) : DEFAULT_THEME_PRESETS;
     } catch { return DEFAULT_THEME_PRESETS; }
   });
+const [widgetSpan, setWidgetSpan] = useState<Partial<Record<Widget, boolean>>>({
+  embedder: true,
+  youtubeWidget: true,
+  notes: false,
+  progressTracker: true,
+  taskBreakdown: true,
+});
   const [teams, setTeams] = useState<ScoreTeam[]>([ { id: 1, name: "Team A", score: 0, color: C.sage }, { id: 2, name: "Team B", score: 0, color: C.slate } ]);
   const [newTeamName, setNewTeamName] = useState<string>("");
   const [diceValue, setDiceValue] = useState<number>(1);
@@ -652,48 +741,65 @@ console.log("Current subtasks:", currentProfile.subTasks);
         
         {/* Change 1: Compact Categorized Group Menu Workspace */}
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", background: C.card, padding: "12px 18px", borderRadius: "16px", border: `1.5px solid ${C.cardBorder}`, alignItems: "center", width: "100%", boxSizing: "border-box", position: "relative" }}>
-          {WIDGET_GROUPS.map((group) => {
-            const isMenuOpen = activeGroupMenu === group.label;
-            return (
-              <div key={group.label} style={{ position: "relative" }}>
-                <button 
-                  onClick={() => setActiveGroupMenu(isMenuOpen ? null : group.label)} 
-                  style={{ ...btnGhost, fontSize: "14px", padding: "8px 16px", background: isMenuOpen ? C.highlight : C.bg, border: isMenuOpen ? "1.5px solid #000" : `1.5px solid ${C.cardBorder}`, borderRadius: "12px", display: "flex", alignItems: "center", gap: "6px" }}
+  {WIDGET_GROUPS.map((group) => {
+    const isMenuOpen = activeGroupMenu === group.label;
+    return (
+      <div key={group.label} style={{ position: "relative" }}>
+        <button
+          onClick={() => setActiveGroupMenu(isMenuOpen ? null : group.label)}
+          style={{ ...btnGhost, fontSize: "14px", padding: "8px 16px", background: isMenuOpen ? C.highlight : C.bg, border: isMenuOpen ? "1.5px solid #000" : `1.5px solid ${C.cardBorder}`, borderRadius: "12px", display: "flex", alignItems: "center", gap: "6px" }}
+        >
+          <span>{group.emoji}</span>
+          <span style={{ fontWeight: "700" }}>{group.label}</span>
+          <span style={{ fontSize: "10px", opacity: 0.7 }}>{isMenuOpen ? "▲" : "▼"}</span>
+        </button>
+        {isMenuOpen && (
+          <div style={{ position: "absolute", top: "45px", left: 0, background: "#fff", border: `1.5px solid ${C.cardBorder}`, borderRadius: "12px", padding: "8px", display: "flex", flexDirection: "column", gap: "4px", boxShadow: "0 6px 16px rgba(0,0,0,0.1)", zIndex: 99, minWidth: "190px" }}>
+            {group.widgets.map((wKey) => (
+              <div key={wKey} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                <button
+                  onClick={() => { toggle(wKey); setActiveGroupMenu(null); }}
+                  style={{ ...btnBase, padding: "8px 12px", fontSize: "13px", textAlign: "left", width: "100%", background: visible[wKey] ? C.highlight : "none", borderRadius: "8px", color: C.text, display: "flex", alignItems: "center", justifyContent: "space-between" }}
                 >
-                  <span>{group.emoji}</span>
-                  <span style={{ fontWeight: "700" }}>{group.label}</span>
-                  <span style={{ fontSize: "10px", opacity: 0.7 }}>{isMenuOpen ? "▲" : "▼"}</span>
+                  <span>{WIDGET_LABELS[wKey].split(" ").slice(1).join(" ")}</span>
+                  <span>{visible[wKey] ? "🟢" : "⚪"}</span>
                 </button>
-                {isMenuOpen && (
-                  <div style={{ position: "absolute", top: "45px", left: 0, background: "#fff", border: `1.5px solid ${C.cardBorder}`, borderRadius: "12px", padding: "8px", display: "flex", flexDirection: "column", gap: "4px", boxShadow: "0 6px 16px rgba(0,0,0,0.1)", zIndex: 99, minWidth: "190px" }}>
-                    {group.widgets.map((wKey) => (
-                      <button 
-                        key={wKey} 
-                        onClick={() => { toggle(wKey); setActiveGroupMenu(null); }} 
-                        style={{ ...btnBase, padding: "8px 12px", fontSize: "13px", textAlign: "left", width: "100%", background: visible[wKey] ? C.highlight : "none", borderRadius: "8px", color: C.text, display: "flex", alignItems: "center", justifyContent: "space-between" }}
-                      >
-                        <span>{WIDGET_LABELS[wKey].split(" ").slice(1).join(" ")}</span>
-                        <span>{visible[wKey] ? "🟢" : "⚪"}</span>
-                      </button>
-                    ))}
+                {visible[wKey] && (
+                  <div style={{ display: "flex", gap: "4px", paddingLeft: "12px", paddingBottom: "4px" }}>
+                    {["Half", "Full"].map((size) => {
+                      const isFull = size === "Full";
+                      const isActive = !!widgetSpan[wKey] === isFull;
+                      return (
+                        <button
+                          key={size}
+                          onClick={(e) => { e.stopPropagation(); setWidgetSpan(s => ({ ...s, [wKey]: isFull })); }}
+                          style={{ ...btnBase, padding: "2px 10px", fontSize: "11px", borderRadius: "20px", background: isActive ? C.text : C.bg, color: isActive ? "#fff" : C.muted, border: `1px solid ${C.cardBorder}` }}
+                        >
+                          {size}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
-            );
-          })}
-          
-          <div style={{ height: "24px", width: "1.5px", background: C.cardBorder, margin: "0 4px" }} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  })}
 
-          <button onClick={() => { setIsEditingMaterials(!isEditingMaterials); setIsEditingPresets(false); }} style={{ ...btnGhost, fontWeight: "700", fontSize: "13px", padding: "8px 14px", borderRadius: "12px", border: isEditingMaterials ? "1.5px solid #000" : "1.5px dashed #000", background: isEditingMaterials ? C.highlight : "none" }}>
-            {isEditingMaterials ? "🔒 Lock Materials" : "🛠️ Desk Setup"}
-          </button>
-          <button onClick={() => { setIsEditingPresets(!isEditingPresets); setIsEditingMaterials(false); }} style={{ ...btnGhost, fontWeight: "700", fontSize: "13px", padding: "8px 14px", borderRadius: "12px", border: isEditingPresets ? "1.5px solid #000" : "1.5px dashed #000", background: isEditingPresets ? C.highlight : "none" }}>
-            🌍 Theme Presets
-          </button>
-          <button onClick={downloadWeeklySummaryReport} style={{ ...btnSage, fontSize: "13px", padding: "8px 16px", marginLeft: "auto", background: "#4e7a60" }}>
-            📥 Export File Summary
-          </button>
-        </div>
+  <div style={{ height: "24px", width: "1.5px", background: C.cardBorder, margin: "0 4px" }} />
+  <button onClick={() => { setIsEditingMaterials(!isEditingMaterials); setIsEditingPresets(false); }} style={{ ...btnGhost, fontWeight: "700", fontSize: "13px", padding: "8px 14px", borderRadius: "12px", border: isEditingMaterials ? "1.5px solid #000" : "1.5px dashed #000", background: isEditingMaterials ? C.highlight : "none" }}>
+    {isEditingMaterials ? "🔒 Lock Materials" : "🛠️ Desk Setup"}
+  </button>
+  <button onClick={() => { setIsEditingPresets(!isEditingPresets); setIsEditingMaterials(false); }} style={{ ...btnGhost, fontWeight: "700", fontSize: "13px", padding: "8px 14px", borderRadius: "12px", border: isEditingPresets ? "1.5px solid #000" : "1.5px dashed #000", background: isEditingPresets ? C.highlight : "none" }}>
+    🌍 Theme Presets
+  </button>
+  <button onClick={downloadWeeklySummaryReport} style={{ ...btnSage, fontSize: "13px", padding: "8px 16px", marginLeft: "auto", background: "#4e7a60" }}>
+    📥 Export File Summary
+  </button>
+</div>
 
         {/* MATERIAL PREVIEW SELECTION PANEL */}
         {isEditingMaterials && (
@@ -855,41 +961,7 @@ console.log("Current subtasks:", currentProfile.subTasks);
                 )}
               </div>
 
-              {/* OPTIONAL STUDENT PROGRESS TRACKER WIDGET */}
-              {visible.progressTracker && (
-                <div style={{ ...cardStyle, background: "#fff", border: `2.5px solid ${activeHeadlineItem.color}`, marginTop: "-12px" }}>
-                  <button style={closeBtn} onClick={() => toggle("progressTracker")}>×</button>
-                  <span style={{ ...labelStyle, fontSize: "11px", color: "#000", marginTop: "4px", display: "block" }}>📋 Student Progress Tracker ({activeHeadlineItem.label}):</span>
-                  {students.filter(s => s.present).length === 0 ? (
-                    <span style={{ fontSize: "13px", color: C.muted, fontStyle: "italic" }}>No present students in class roster to capture profiles for. Populate names in the Roster widget below.</span>
-                  ) : (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "12px", width: "100%" }}>
-                      {students.filter(s => s.present).map((student) => {
-                        const obs = (currentProfile.observations || {})[student.name] || { status: "none", notes: "" };
-                        return (
-                          <div key={student.name} style={{ display: "flex", flexDirection: "column", gap: "8px", background: C.bg, padding: "12px", borderRadius: "12px", border: `1.5px solid ${C.cardBorder}` }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                              <span style={{ fontWeight: "800", fontSize: "14px", color: "#000" }}>{student.name}</span>
-                              <div style={{ display: "flex", gap: "4px" }}>
-                                <button title="Needs Support" onClick={() => updateStudentObservation(student.name, obs.status === "red" ? "none" : "red", obs.notes)} style={{ background: obs.status === "red" ? C.roses : "none", border: "1px solid #000", borderRadius: "50%", width: "24px", height: "24px", cursor: "pointer", fontSize: "11px", padding: 0 }}>🔴</button>
-                                <button title="Progressing" onClick={() => updateStudentObservation(student.name, obs.status === "amber" ? "none" : "amber", obs.notes)} style={{ background: obs.status === "amber" ? "#ffeeba" : "none", border: "1px solid #000", borderRadius: "50%", width: "24px", height: "24px", cursor: "pointer", fontSize: "11px", padding: 0 }}>🟡</button>
-                                <button title="Mastered" onClick={() => updateStudentObservation(student.name, obs.status === "green" ? "none" : "green", obs.notes)} style={{ background: obs.status === "green" ? "#d4edda" : "none", border: "1px solid #000", borderRadius: "50%", width: "24px", height: "24px", cursor: "pointer", fontSize: "11px", padding: 0 }}>🟢</button>
-                                <button title="Absent" onClick={() => updateStudentObservation(student.name, obs.status === "absent" ? "none" : "absent", obs.notes)} style={{ background: obs.status === "absent" ? "#e0e0e0" : "none", border: "1px solid #000", borderRadius: "50%", width: "24px", height: "24px", cursor: "pointer", fontSize: "11px", fontWeight: "900", padding: 0, color: "#555" }}>A</button>
-                              </div>
-                            </div>
-                            <input 
-                              value={obs.notes} 
-                              onChange={(e) => updateStudentObservation(student.name, obs.status, e.target.value)} 
-                              placeholder="Add quick status observations..." 
-                              style={{ ...inputStyle, background: "#fff", padding: "6px 10px", fontSize: "12px", borderRadius: "8px" }} 
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+  
             </>
           );
         })()}
@@ -953,11 +1025,22 @@ console.log("Current subtasks:", currentProfile.subTasks);
         )}
 
         {/* ── LOWER GRID ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "24px", width: "100%", boxSizing: "border-box" }}>
-          
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", width: "100%", boxSizing: "border-box" }}>
+       
+{/* PROGRESS TRACKER */}
+{visible.progressTracker && (
+  <ProgressTrackerWidget
+    students={students}
+    subjectProfiles={subjectProfiles}
+    setSubjectProfiles={setSubjectProfiles}
+    headlineLessonId={headlineLessonId}
+    toggle={toggle}
+  />
+)}
+
           {/* EMBEDDER */}
           {visible.embedder && (
-            <div style={{ ...cardStyle, gridColumn: "span 1", background: "#fff", border: "2px solid #000" }}>
+<div style={{ ...cardStyle, gridColumn: widgetSpan.embedder ? "span 2" : "span 1", background: "#fff", border: "2px solid #000" }}>
               <button style={closeBtn} onClick={() => toggle("embedder")}>×</button>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginTop: "12px" }}>
                 <button onClick={() => setIsEmbedInputCollapsed(!isEmbedInputCollapsed)} style={{ ...btnGhost, fontSize: "11px", padding: "4px 12px" }}>{isEmbedInputCollapsed ? "⚙️ Show Code Box" : "Hide Input Code Box"}</button>
@@ -969,7 +1052,7 @@ console.log("Current subtasks:", currentProfile.subTasks);
 
           {/* YOUTUBE */}
           {visible.youtubeWidget && (
-            <div style={{ ...cardStyle, gridColumn: "span 1", background: "#fff", border: "2px solid #000" }}>
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.youtubeWidget ? "span 2" : "span 1", background: "#fff", border: "2px solid #000" }}>
               <button style={closeBtn} onClick={() => toggle("youtubeWidget")}>×</button>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginTop: "12px" }}>
                 <button onClick={() => setIsYoutubeInputCollapsed(!isYoutubeInputCollapsed)} style={{ ...btnGhost, fontSize: "11px", padding: "4px 12px" }}>{isYoutubeInputCollapsed ? "⚙️ Show URL Input" : "Hide Link Input Box"}</button>
@@ -983,9 +1066,10 @@ console.log("Current subtasks:", currentProfile.subTasks);
             </div>
           )}
 
+
           {/* TIMETABLE SETUP */}
           {visible.timetable && (
-            <div style={cardStyle}>
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.timetable ? "span 2" : "span 1", background: "#fff", border: "2px solid #000" }}>
               <button style={closeBtn} onClick={() => toggle("timetable")}>×</button>
               <div style={{ background: C.highlight, padding: "12px", borderRadius: "14px", display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginTop: "12px" }}>
                 <select onChange={(e: React.ChangeEvent<HTMLSelectElement>) => loadTemplate(e.target.value)} defaultValue="" style={{ ...inputStyle, width: "auto", flex: 1, padding: "6px 10px", fontSize: "14px" }}>
@@ -1018,18 +1102,19 @@ console.log("Current subtasks:", currentProfile.subTasks);
           )}
 
           {/* CLOCK */}
-          {visible.clock && (
-            <div style={cardStyle}>
-              <button style={closeBtn} onClick={() => toggle("clock")}>×</button>
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "220px" }}>
-                <div style={{ fontSize: "74px", fontWeight: "800", letterSpacing: "-2px", color: C.text }}>{time.toLocaleTimeString()}</div>
-              </div>
-            </div>
-          )}
-
+         {visible.clock && (
+  <div style={{ ...cardStyle, gridColumn: widgetSpan.clock ? "span 2" : "span 1" }}>
+    <button style={closeBtn} onClick={() => toggle("clock")}>×</button>
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "220px" }}>
+      <div style={{ fontSize: "74px", fontWeight: "800", letterSpacing: "-2px", color: C.text }}>
+        {time.toLocaleTimeString()}
+      </div>
+    </div>
+  </div>
+)}
           {/* TIMER */}
           {visible.timer && (
-            <div style={cardStyle}>
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.timer ? "span 2" : "span 1" }}>
               <button style={closeBtn} onClick={() => toggle("timer")}>×</button>
               <CircleTimer pct={seconds / (minutes * 60 || 1)} minutes={minutes} seconds={seconds} />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "14px", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "14px" }}>
@@ -1043,7 +1128,7 @@ console.log("Current subtasks:", currentProfile.subTasks);
 
           {/* STOPWATCH */}
           {visible.stopwatch && (
-            <div style={cardStyle}>
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.stopwatch ? "span 2" : "span 1" }}>
               <button style={closeBtn} onClick={() => toggle("stopwatch")}>×</button>
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "180px" }}>
                 <div style={{ fontSize: "68px", fontWeight: "800", color: swRunning ? C.sageDark : C.text }}>{swFormatted}</div>
@@ -1059,7 +1144,7 @@ console.log("Current subtasks:", currentProfile.subTasks);
 
           {/* WORK MODES */}
           {visible.workSymbols && (
-            <div style={{ ...cardStyle }}>
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.workSymbols ? "span 2" : "span 1", background: "#fff", border: "2px solid #000" }}>
               <button style={closeBtn} onClick={() => toggle("workSymbols")}>×</button>
               <div style={{ background: workMode.color, borderRadius: "14px", padding: "32px 24px", textAlign: "center", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", marginTop: "12px" }}>
   <div style={{ fontWeight: "900", fontSize: "36px", color: "#fff", letterSpacing: "2px", textTransform: "uppercase" }}>{workMode.label}</div>
@@ -1074,7 +1159,7 @@ console.log("Current subtasks:", currentProfile.subTasks);
 
           {/* DICE */}
           {visible.dice && (
-            <div style={cardStyle}>
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.dice ? "span 2" : "span 1", background: "#fff", border: "2px solid #000" }}>
               <button style={closeBtn} onClick={() => toggle("dice")}>×</button>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", minHeight: "180px" }}>
                 <div style={{ transition: rolling ? "transform 0.08s" : "none", transform: rolling ? `rotate(${Math.random() * 20 - 10}deg)` : "none" }}>
@@ -1087,7 +1172,7 @@ console.log("Current subtasks:", currentProfile.subTasks);
 
           {/* NOTES */}
           {visible.notes && (
-            <div style={cardStyle}>
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.notes ? "span 2" : "span 1" }}>
               <button style={closeBtn} onClick={() => toggle("notes")}>×</button>
               <textarea value={notes} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)} placeholder="Type shared lesson summary notes here…" style={{ ...inputStyle, flex: 1, minHeight: "220px", resize: "none", marginTop: "12px" }} />
             </div>
@@ -1095,7 +1180,7 @@ console.log("Current subtasks:", currentProfile.subTasks);
 
           {/* CLASS ROSTER */}
           {visible.classList && (
-            <div style={cardStyle}>
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.classList ? "span 2" : "span 1", background: "#fff", border: "2px solid #000" }}>
               <button style={closeBtn} onClick={() => toggle("classList")}>×</button>
               <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
                 <input value={studentName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStudentName(e.target.value)} placeholder="Name…" onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter" && studentName.trim()) { e.preventDefault(); setStudents([...students, { name: studentName.trim(), present: true }]); setStudentName(""); } }} style={inputStyle} />
@@ -1140,7 +1225,7 @@ console.log("Current subtasks:", currentProfile.subTasks);
 
           {/* SCOREBOARD */}
           {visible.scoreboard && (
-            <div style={cardStyle}>
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.scoreboard ? "span 2" : "span 1", background: "#fff", border: "2px solid #000" }}>
               <button style={closeBtn} onClick={() => toggle("scoreboard")}>×</button>
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", flex: 1, alignItems: "center", marginTop: "12px" }}>
                 {teams.map((team: ScoreTeam) => (
