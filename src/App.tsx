@@ -833,8 +833,7 @@ console.log("Current subtasks:", currentProfile.subTasks);
                 </button>
               ))}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", background: C.bg, padding: "14px", borderRadius: "12px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", width: "100%", boxSizing: "border-box" }}>              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                   <span style={{ fontSize: "11px", fontWeight: "bold", color: C.text }}>💡 Central Idea:</span>
                   <textarea value={themePresets[selectedPresetToEdit].centralIdea} onChange={(e) => updatePresetField(selectedPresetToEdit, "centralIdea", e.target.value)} style={{ ...inputStyle, background: "#fff", height: "60px", fontSize: "13px", resize: "none" }} />
