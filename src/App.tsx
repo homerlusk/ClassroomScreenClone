@@ -1080,9 +1080,9 @@ const playTimerChime = () => {
     return <div style={{ width: "100%", minHeight: "450px", border: `2px solid ${C.cardBorder}`, borderRadius: "12px", overflow: "hidden", background: C.bg }} dangerouslySetInnerHTML={{ __html: embedHtml }} />;
   }, [embedHtml]);
 
-  return (
-    <div style={{ display: "flex", width: "100vw", minHeight: "100vh", background: C.bg, color: C.text, fontFamily: font, boxSizing: "border-box", margin: 0, padding: 0, overflowX: "hidden", maxWidth: "100%" }}>
-
+return (
+    /* Merged your outer layout styles with the critical 'alignItems: "flex-start"' property */
+    <div style={{ display: "flex", alignItems: "flex-start", width: "100vw", minHeight: "100vh", background: C.bg, color: C.text, fontFamily: font, boxSizing: "border-box", margin: 0, padding: 0, overflowX: "hidden", maxWidth: "100%" }}>
       {/* ── LEFT SIDEBAR ── */}
       {showSidebar && (
         <div style={{ width: "110px", borderRight: `2px solid ${C.cardBorder}`, background: C.card, padding: "12px 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", boxSizing: "border-box", overflowY: "auto", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>
