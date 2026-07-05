@@ -31,6 +31,7 @@ export interface Note {
 
 export interface Intention {
   subject: string;
+  label: string;
   centralIdea: string;
   loi1: string;
   loi2: string;
@@ -91,7 +92,7 @@ export async function fetchIntentions(): Promise<Record<string, Intention>> {
 }
 
 export async function pushIntentions(
-  intentions: Record<string, { centralIdea: string; loi1: string; loi2: string; loi3: string; learningObjective: string }>
+  intentions: Record<string, { label: string; centralIdea: string; loi1: string; loi2: string; loi3: string; learningObjective: string }>
 ) {
   return post("setIntentions", intentions);
 }

@@ -89,7 +89,18 @@ export default function Teacher() {
   }
 
   useEffect(() => {
-    if (getApiUrl()) refreshAll();
+    if (!getApiUrl()) return;
+    refreshAll();
+
+    const interval = setInterval(refreshAll, 20000);
+
+    const onVisible = () => { if (document.visibilityState === "visible") refreshAll(); };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -170,11 +181,12 @@ export default function Teacher() {
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.headerRow}>
+    <div style={styles.headerRow}>
         <h1 style={styles.h1}>Observations</h1>
-        <button style={styles.linkButton} onClick={disconnect}>Change API URL</button>
-      </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <button style={styles.linkButton} onClick={refreshAll}>Refresh</button>
+          <button style={styles.linkButton} onClick={disconnect}>Change API URL</button>
+        </div>
 
       {connectionError && (
         <div style={styles.errorBox}>
@@ -191,7 +203,7 @@ export default function Teacher() {
             onClick={() => setSubject(s)}
             style={{ ...styles.tab, ...(subject === s ? styles.tabActive : {}) }}
           >
-            {s}
+            {intentions[s]?.label || s}
           </button>
         ))}
       </div>
