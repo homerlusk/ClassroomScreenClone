@@ -5,9 +5,10 @@ import {
 } from "../services/notes";
 
 const RAG_TAGS = [
-  { emoji: "🔴", label: "Doesn't get it", color: "#c0433f" },
-  { emoji: "🟡", label: "Getting it", color: "#c99a2e" },
-  { emoji: "🟢", label: "Gets it", color: "#3f8a52" },
+  { emoji: "🔴", label: "NS", color: "#c0433f" },
+  { emoji: "🟡", label: "AE", color: "#c99a2e" },
+  { emoji: "🟢", label: "ME", color: "#3f8a52" },
+  { emoji: "🔵", label: "EE", color: "#3d6fa5" },
 ];
 
 const QUICK_TAGS = [
@@ -15,7 +16,7 @@ const QUICK_TAGS = [
   { emoji: "🤝", label: "Helpful" },
   { emoji: "💬", label: "Explained thinking" },
   { emoji: "📚", label: "Excellent effort" },
-  { emoji: "⚠️", label: "Needs support" },
+  { emoji: "💫", label: "Reflective" },
 ];
 
 function isoWeek(date: Date): string {
@@ -342,8 +343,7 @@ const styles: Record<string, React.CSSProperties> = {
   studentChipActive: { background: "#3d5a80", color: "white", borderColor: "#3d5a80" },
   quickTagGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 },
   quickTagButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: 14, borderRadius: 14, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer", fontSize: 13, transition: "all 0.15s ease" },
-  ragRow: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 },
-  ragButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 6px", borderRadius: 14, border: "2px solid", cursor: "pointer", fontSize: 12, fontWeight: 600, transition: "all 0.15s ease" },
+  ragRow: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 16 },  ragButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 6px", borderRadius: 14, border: "2px solid", cursor: "pointer", fontSize: 12, fontWeight: 600, transition: "all 0.15s ease" },
   savedBanner: { textAlign: "center", fontWeight: 600, color: "#4e7a60", fontSize: 14, minHeight: 20, marginBottom: 6 },
   freeTextRow: { display: "flex", gap: 8, marginBottom: 8 },
   freeTextInput: { flex: 1, padding: 12, borderRadius: 10, border: "1.5px solid #d9d2c5", boxSizing: "border-box" },
