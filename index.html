@@ -5,10 +5,22 @@
     <link rel="icon" type="image/svg+xml" href="/ClassroomScreenClone/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>classroomscreenclone</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; frame-src 'self' https://www.youtube.com/ https://youtube.com/ https:; img-src 'self' data: https:;">
-    <script type="module" crossorigin src="/ClassroomScreenClone/assets/index-DlTqQbLn.js"></script>
-    <link rel="stylesheet" crossorigin href="/ClassroomScreenClone/assets/index-C-dvAIOk.css">
-  </head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https: 'unsafe-inline' 'unsafe-eval'; frame-src 'self' https://www.youtube.com/ https://youtube.com/ https:; img-src 'self' data: https:;">
+    <script type="text/javascript">
+      (function(l) {
+        if (l.search[1] === '/' ) {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&')
+          }).join('?');
+          window.history.replaceState(null, null,
+              l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location))
+    </script>
+  <script type="module" crossorigin src="/ClassroomScreenClone/assets/index-DlTqQbLn.js"></script>
+  <link rel="stylesheet" crossorigin href="/ClassroomScreenClone/assets/index-C-dvAIOk.css">
+</head>
   <body>
     <div id="root"></div>
   </body>
