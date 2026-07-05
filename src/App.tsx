@@ -921,26 +921,28 @@ const playTimerChime = () => {
   useEffect(() => { localStorage.setItem("uoiThemePresetsRegistry", JSON.stringify(themePresets)); }, [themePresets]);
   useEffect(() => { localStorage.setItem("reportData", JSON.stringify(reportData)); }, [reportData]);
 
-  // Sync to the Teacher API (see src/services/notes.ts) so the /teacher page
-  // on a phone always reflects what's currently on the classroom screen.
-  // Silently does nothing until a Teacher API URL has been set (see settings),
-  // so the app behaves exactly as before if you never set one up.
-  useEffect(() => {
+useEffect(() => {
     if (!getApiUrl()) return;
+    // Only push subjects that are actually on today's timetable — subjectProfiles
+    // accumulates a profile for every subject ever used across all days, so
+    // pushing it unfiltered would show old/unrelated subjects on the phone
+    // instead of matching what's really on the classroom screen's sidebar today.
+    const todaysLessonIds = Array.from(new Set(timetable.map((item) => item.lessonId)));
     const intentions: Record<string, { centralIdea: string; loi1: string; loi2: string; loi3: string; learningObjective: string }> = {};
-    Object.entries(subjectProfiles).forEach(([id, profile]) => {
+    todaysLessonIds.forEach((id) => {
+      const profile = subjectProfiles[id];
       intentions[id] = {
-        centralIdea: profile.centralIdea || "",
-        loi1: profile.loi1 || "",
-        loi2: profile.loi2 || "",
-        loi3: profile.loi3 || "",
-        learningObjective: profile.learningObjective || "",
+        centralIdea: profile?.centralIdea || "",
+        loi1: profile?.loi1 || "",
+        loi2: profile?.loi2 || "",
+        loi3: profile?.loi3 || "",
+        learningObjective: profile?.learningObjective || "",
       };
     });
     if (Object.keys(intentions).length) {
       pushIntentions(intentions).catch(() => { /* best-effort; classroom screen still works offline */ });
     }
-  }, [subjectProfiles]);
+  }, [subjectProfiles, timetable]);
 
   useEffect(() => {
     if (!getApiUrl()) return;
