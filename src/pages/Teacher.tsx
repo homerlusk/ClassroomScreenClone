@@ -181,12 +181,14 @@ export default function Teacher() {
   }
 
   return (
-    <div style={styles.headerRow}>
+    <div style={styles.page}>
+      <div style={styles.headerRow}>
         <h1 style={styles.h1}>Observations</h1>
         <div style={{ display: "flex", gap: 12 }}>
           <button style={styles.linkButton} onClick={refreshAll}>Refresh</button>
           <button style={styles.linkButton} onClick={disconnect}>Change API URL</button>
         </div>
+      </div>
 
       {connectionError && (
         <div style={styles.errorBox}>
