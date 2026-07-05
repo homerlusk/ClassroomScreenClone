@@ -921,29 +921,35 @@ const playTimerChime = () => {
   useEffect(() => { localStorage.setItem("uoiThemePresetsRegistry", JSON.stringify(themePresets)); }, [themePresets]);
   useEffect(() => { localStorage.setItem("reportData", JSON.stringify(reportData)); }, [reportData]);
 
-useEffect(() => {
+// The learningObjective field is a plain textarea pre-filled with a starting
+  // prompt ("🎯"), and the teacher just keeps typing
+  // after it — so the raw stored value always has that prompt stuck to the
+  // front. Strip it before sending to the Sheet so only the actual content
+  // (what follows "...") is saved there; the classroom screen itself is untouched.
+  function stripLearningObjectivePrompt(text: string): string {
+    return text.replace(/^[^\w]*we are learning to\.*\s*/i, "").trim();
+  }
+
+  useEffect(() => {
     if (!getApiUrl()) return;
-    // Only push subjects that are actually on today's timetable — subjectProfiles
-    // accumulates a profile for every subject ever used across all days, so
-    // pushing it unfiltered would show old/unrelated subjects on the phone
-    // instead of matching what's really on the classroom screen's sidebar today.
     const todaysLessonIds = Array.from(new Set(timetable.map((item) => item.lessonId)));
-    const intentions: Record<string, { centralIdea: string; loi1: string; loi2: string; loi3: string; learningObjective: string }> = {};
+    const intentions: Record<string, { label: string; centralIdea: string; loi1: string; loi2: string; loi3: string; learningObjective: string }> = {};
     todaysLessonIds.forEach((id) => {
       const profile = subjectProfiles[id];
+      const lessonType = LESSON_TYPES.find((lt) => lt.id === id);
       intentions[id] = {
+        label: lessonType?.label || id,
         centralIdea: profile?.centralIdea || "",
         loi1: profile?.loi1 || "",
         loi2: profile?.loi2 || "",
         loi3: profile?.loi3 || "",
-        learningObjective: profile?.learningObjective || "",
+        learningObjective: stripLearningObjectivePrompt(profile?.learningObjective || ""),
       };
     });
     if (Object.keys(intentions).length) {
-      pushIntentions(intentions).catch(() => { /* best-effort; classroom screen still works offline */ });
+      pushIntentions(intentions).catch(() => {});
     }
   }, [subjectProfiles, timetable]);
-
   useEffect(() => {
     if (!getApiUrl()) return;
     pushStudents(students.map(s => ({ name: s.name, present: s.present }))).catch(() => {});
