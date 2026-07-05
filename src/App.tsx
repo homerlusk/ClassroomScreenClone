@@ -921,14 +921,6 @@ const playTimerChime = () => {
   useEffect(() => { localStorage.setItem("uoiThemePresetsRegistry", JSON.stringify(themePresets)); }, [themePresets]);
   useEffect(() => { localStorage.setItem("reportData", JSON.stringify(reportData)); }, [reportData]);
 
-// The learningObjective field is a plain textarea pre-filled with a starting
-  // prompt ("🎯"), and the teacher just keeps typing
-  // after it — so the raw stored value always has that prompt stuck to the
-  // front. Strip it before sending to the Sheet so only the actual content
-  // (what follows "...") is saved there; the classroom screen itself is untouched.
-  function stripLearningObjectivePrompt(text: string): string {
-    return text.replace(/^[^\w]*we are learning to\.*\s*/i, "").trim();
-  }
 
   useEffect(() => {
     if (!getApiUrl()) return;
@@ -943,7 +935,7 @@ const playTimerChime = () => {
         loi1: profile?.loi1 || "",
         loi2: profile?.loi2 || "",
         loi3: profile?.loi3 || "",
-        learningObjective: stripLearningObjectivePrompt(profile?.learningObjective || ""),
+        learningObjective: profile?.learningObjective || "",
       };
     });
     if (Object.keys(intentions).length) {
@@ -956,7 +948,7 @@ const playTimerChime = () => {
   }, [students]);
 
   const currentProfile: SubjectProfile = subjectProfiles[headlineLessonId] || {
-    materials: {}, learningObjective: headlineLessonId === "uoi" ? "" : "🎯 We are learning to... ",
+    materials: {}, learningObjective: headlineLessonId === "uoi" ? "" : "🎯 ",
     centralIdea: "", loi1: "", loi2: "", loi3: "", activeLoiHighlight: 0,
     atls: "", subTasks: [], observations: {}, activeTaskId: null,
   };
