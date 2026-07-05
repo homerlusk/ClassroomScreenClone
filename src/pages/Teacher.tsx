@@ -68,6 +68,7 @@ export default function Teacher() {
   const [recentNotes, setRecentNotes] = useState<Note[]>([]);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [lastSavedTag, setLastSavedTag] = useState<string | null>(null);
 
   const { start: startListening, listening, supported: micSupported } = useSpeechToText(
     (text) => setFreeText((prev) => (prev ? `${prev} ${text}` : text))
@@ -125,6 +126,10 @@ export default function Teacher() {
       });
       setFreeText("");
       setSavedFlash(true);
+      if (tag) {
+        setLastSavedTag(tag);
+        setTimeout(() => setLastSavedTag(null), 900);
+      }
       setTimeout(() => setSavedFlash(false), 1200);
     } catch (err) {
       setConnectionError(err instanceof Error ? err.message : "Save failed");
@@ -212,33 +217,54 @@ export default function Teacher() {
 
       {selectedStudent && (
         <>
+          <div style={styles.savedBanner}>
+            {savedFlash ? "✓ Saved" : "\u00A0"}
+          </div>
+
           <div style={styles.ragRow}>
-            {RAG_TAGS.map((t) => (
-              <button
-                key={t.label}
-                disabled={saving}
-                style={{ ...styles.ragButton, borderColor: t.color, color: t.color }}
-                onClick={() => saveObservation(t.label, t.label)}
-              >
-                <span style={{ fontSize: 26 }}>{t.emoji}</span>
-                <span>{t.label}</span>
-              </button>
-            ))}
+            {RAG_TAGS.map((t) => {
+              const isJustSaved = lastSavedTag === t.label;
+              return (
+                <button
+                  key={t.label}
+                  disabled={saving}
+                  style={{
+                    ...styles.ragButton,
+                    borderColor: t.color,
+                    color: isJustSaved ? "white" : t.color,
+                    background: isJustSaved ? t.color : "white",
+                    transform: isJustSaved ? "scale(0.96)" : "scale(1)",
+                  }}
+                  onClick={() => saveObservation(t.label, t.label)}
+                >
+                  <span style={{ fontSize: 26 }}>{isJustSaved ? "✓" : t.emoji}</span>
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
           </div>
 
           <div style={styles.intentionLabel}>More</div>
           <div style={styles.quickTagGrid}>
-            {QUICK_TAGS.map((t) => (
-              <button
-                key={t.label}
-                disabled={saving}
-                style={styles.quickTagButton}
-                onClick={() => saveObservation(t.label, t.label)}
-              >
-                <span style={{ fontSize: 22 }}>{t.emoji}</span>
-                <span>{t.label}</span>
-              </button>
-            ))}
+            {QUICK_TAGS.map((t) => {
+              const isJustSaved = lastSavedTag === t.label;
+              return (
+                <button
+                  key={t.label}
+                  disabled={saving}
+                  style={{
+                    ...styles.quickTagButton,
+                    background: isJustSaved ? "#4e7a60" : "#ebe5d9",
+                    color: isJustSaved ? "white" : "#2c2825",
+                    transform: isJustSaved ? "scale(0.96)" : "scale(1)",
+                  }}
+                  onClick={() => saveObservation(t.label, t.label)}
+                >
+                  <span style={{ fontSize: 22 }}>{isJustSaved ? "✓" : t.emoji}</span>
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
           </div>
 
           <div style={styles.freeTextRow}>
@@ -266,8 +292,6 @@ export default function Teacher() {
             </button>
           </div>
 
-          {savedFlash && <div style={styles.savedFlash}>Saved ✓</div>}
-
           {recentNotes.length > 0 && (
             <div style={styles.recentList}>
               <div style={styles.intentionLabel}>Recent for {selectedStudent}</div>
@@ -288,7 +312,8 @@ const styles: Record<string, React.CSSProperties> = {
   page: { maxWidth: 480, margin: "0 auto", padding: 16, fontFamily: "'Century Gothic', 'Trebuchet MS', Arial, sans-serif", color: "#2c2825" },
   headerRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 },
   linkButton: { background: "none", border: "none", color: "#3d5a80", fontSize: 13, textDecoration: "underline", cursor: "pointer", padding: 4 },
-  errorBox: { background: "#f6e6e6", borderRadius: 10, padding: 10, marginBottom: 12, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 },  h1: { fontSize: 22, marginBottom: 8 },
+  errorBox: { background: "#f6e6e6", borderRadius: 10, padding: 10, marginBottom: 12, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 },
+  h1: { fontSize: 22, marginBottom: 8 },
   muted: { color: "#7a7068", fontSize: 14 },
   input: { width: "100%", padding: 12, borderRadius: 10, border: "1.5px solid #d9d2c5", marginBottom: 12, boxSizing: "border-box" },
   primaryButton: { padding: "12px 18px", borderRadius: 10, border: "none", background: "#4e7a60", color: "white", fontWeight: 600, cursor: "pointer" },
@@ -302,9 +327,10 @@ const styles: Record<string, React.CSSProperties> = {
   studentChip: { padding: "10px 14px", borderRadius: 20, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer" },
   studentChipActive: { background: "#3d5a80", color: "white", borderColor: "#3d5a80" },
   quickTagGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 },
-  quickTagButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: 14, borderRadius: 14, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer", fontSize: 13 },
+  quickTagButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: 14, borderRadius: 14, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer", fontSize: 13, transition: "all 0.15s ease" },
   ragRow: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 },
-  ragButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 6px", borderRadius: 14, border: "2px solid", background: "white", cursor: "pointer", fontSize: 12, fontWeight: 600 },
+  ragButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 6px", borderRadius: 14, border: "2px solid", cursor: "pointer", fontSize: 12, fontWeight: 600, transition: "all 0.15s ease" },
+  savedBanner: { textAlign: "center", fontWeight: 600, color: "#4e7a60", fontSize: 14, minHeight: 20, marginBottom: 6 },
   freeTextRow: { display: "flex", gap: 8, marginBottom: 8 },
   freeTextInput: { flex: 1, padding: 12, borderRadius: 10, border: "1.5px solid #d9d2c5", boxSizing: "border-box" },
   micButton: { padding: "0 14px", borderRadius: 10, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer", fontSize: 18 },
