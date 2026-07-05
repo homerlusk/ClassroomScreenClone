@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
+import { getApiUrl, pushIntentions, pushStudents } from "./services/notes";
 
 const C = {
   bg: "#f2ede4",
@@ -920,6 +921,32 @@ const playTimerChime = () => {
   useEffect(() => { localStorage.setItem("uoiThemePresetsRegistry", JSON.stringify(themePresets)); }, [themePresets]);
   useEffect(() => { localStorage.setItem("reportData", JSON.stringify(reportData)); }, [reportData]);
 
+  // Sync to the Teacher API (see src/services/notes.ts) so the /teacher page
+  // on a phone always reflects what's currently on the classroom screen.
+  // Silently does nothing until a Teacher API URL has been set (see settings),
+  // so the app behaves exactly as before if you never set one up.
+  useEffect(() => {
+    if (!getApiUrl()) return;
+    const intentions: Record<string, { centralIdea: string; loi1: string; loi2: string; loi3: string; learningObjective: string }> = {};
+    Object.entries(subjectProfiles).forEach(([id, profile]) => {
+      intentions[id] = {
+        centralIdea: profile.centralIdea || "",
+        loi1: profile.loi1 || "",
+        loi2: profile.loi2 || "",
+        loi3: profile.loi3 || "",
+        learningObjective: profile.learningObjective || "",
+      };
+    });
+    if (Object.keys(intentions).length) {
+      pushIntentions(intentions).catch(() => { /* best-effort; classroom screen still works offline */ });
+    }
+  }, [subjectProfiles]);
+
+  useEffect(() => {
+    if (!getApiUrl()) return;
+    pushStudents(students.map(s => ({ name: s.name, present: s.present }))).catch(() => {});
+  }, [students]);
+
   const currentProfile: SubjectProfile = subjectProfiles[headlineLessonId] || {
     materials: {}, learningObjective: headlineLessonId === "uoi" ? "" : "🎯 We are learning to... ",
     centralIdea: "", loi1: "", loi2: "", loi3: "", activeLoiHighlight: 0,
@@ -1080,9 +1107,9 @@ const playTimerChime = () => {
     return <div style={{ width: "100%", minHeight: "450px", border: `2px solid ${C.cardBorder}`, borderRadius: "12px", overflow: "hidden", background: C.bg }} dangerouslySetInnerHTML={{ __html: embedHtml }} />;
   }, [embedHtml]);
 
-  return (
-    <div style={{ display: "flex", width: "100vw", minHeight: "100vh", background: C.bg, color: C.text, fontFamily: font, boxSizing: "border-box", margin: 0, padding: 0, overflowX: "hidden", maxWidth: "100%" }}>
-
+return (
+    /* Merged your outer layout styles with the critical 'alignItems: "flex-start"' property */
+    <div style={{ display: "flex", alignItems: "flex-start", width: "100vw", minHeight: "100vh", background: C.bg, color: C.text, fontFamily: font, boxSizing: "border-box", margin: 0, padding: 0, overflowX: "hidden", maxWidth: "100%" }}>
       {/* ── LEFT SIDEBAR ── */}
       {showSidebar && (
         <div style={{ width: "110px", borderRight: `2px solid ${C.cardBorder}`, background: C.card, padding: "12px 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", boxSizing: "border-box", overflowY: "auto", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>

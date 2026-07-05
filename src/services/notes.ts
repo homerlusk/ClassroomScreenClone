@@ -1,0 +1,106 @@
+// Talks to the Google Apps Script Web App (see /apps-script/Code.gs).
+// The URL is unique to each teacher's own deployment, so it's stored in
+// localStorage rather than hard-coded — both the classroom screen (PC) and
+// the /teacher page (phone) read the same key, but each device needs it
+// entered once since localStorage doesn't sync between devices on its own.
+
+export const API_URL_KEY = "teacherApiUrl";
+
+export function getApiUrl(): string {
+  return localStorage.getItem(API_URL_KEY) || "";
+}
+
+export function setApiUrl(url: string) {
+  localStorage.setItem(API_URL_KEY, url.trim());
+}
+export function clearApiUrl() {
+  localStorage.removeItem(API_URL_KEY);
+}
+export interface Note {
+  id: string;
+  createdAt: string;
+  date: string;
+  week: string;
+  studentName: string;
+  subject: string;
+  unitTitle: string;
+  learningIntention: string;
+  tags: string; // comma-joined, matches sheet storage
+  text: string;
+}
+
+export interface Intention {
+  subject: string;
+  centralIdea: string;
+  loi1: string;
+  loi2: string;
+  loi3: string;
+  learningObjective: string;
+  updatedAt: string;
+}
+
+async function get(action: string, params: Record<string, string> = {}) {
+  const base = getApiUrl();
+  if (!base) throw new Error("No Teacher API URL configured yet.");
+  const url = new URL(base);
+  url.searchParams.set("action", action);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString());
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+async function post(action: string, payload: unknown) {
+  const base = getApiUrl();
+  if (!base) throw new Error("No Teacher API URL configured yet.");
+  // IMPORTANT: Content-Type must stay "text/plain" here (not application/json).
+  // Apps Script web apps don't handle CORS preflight (OPTIONS) requests, so we
+  // keep this a "simple request" — text/plain avoids the browser sending a
+  // preflight in the first place. Code.gs still JSON.parses the body itself.
+  const res = await fetch(base, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action, payload }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+export async function fetchNotes(studentName?: string): Promise<Note[]> {
+  const data = await get("notes", studentName ? { studentName } : {});
+  return data.notes;
+}
+
+export async function addNote(note: Omit<Note, "id" | "createdAt" | "tags"> & { tags: string[] }) {
+  return post("addNote", { ...note, tags: note.tags.join(",") });
+}
+
+export async function updateNote(id: string, updates: { text?: string; tags?: string[] }) {
+  return post("updateNote", { id, ...updates });
+}
+
+export async function deleteNote(id: string) {
+  return post("deleteNote", { id });
+}
+
+export async function fetchIntentions(): Promise<Record<string, Intention>> {
+  const data = await get("intentions");
+  return data.intentions;
+}
+
+export async function pushIntentions(
+  intentions: Record<string, { centralIdea: string; loi1: string; loi2: string; loi3: string; learningObjective: string }>
+) {
+  return post("setIntentions", intentions);
+}
+
+export async function fetchStudents(): Promise<{ name: string; present: boolean }[]> {
+  const data = await get("students");
+  return data.students;
+}
+
+export async function pushStudents(students: { name: string; present: boolean }[]) {
+  return post("setStudents", { students });
+}
