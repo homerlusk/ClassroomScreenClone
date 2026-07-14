@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { getApiUrl, pushIntentions, pushStudents } from "./services/notes";
+import { getApiUrl, setApiUrl, pushIntentions, pushStudents, fetchNotes, type Note } from "./services/notes";
 
 const C = {
   bg: "#f2ede4",
@@ -54,6 +54,10 @@ const closeBtn: React.CSSProperties = {
   border: "none", fontSize: "20px", color: C.muted, cursor: "pointer",
   lineHeight: 1, fontFamily: font, zIndex: 10,
 };
+const linkStyle: React.CSSProperties = {
+  background: "none", border: "none", color: C.slateDark, fontSize: "11px",
+  textDecoration: "underline", cursor: "pointer", padding: 0, marginLeft: "8px", fontFamily: font,
+};
 
 const WIDGETS = [
   "timetable", "taskBreakdown", "progressTracker", "clock", "timer", "stopwatch",
@@ -70,10 +74,10 @@ const WIDGET_LABELS: Record<Widget, string> = {
 };
 
 const WIDGET_GROUPS: { label: string; emoji: string; widgets: Widget[] }[] = [
-  { label: "Timers", emoji: "⏱️", widgets: ["clock", "timer", "stopwatch"] },
-  { label: "Class Tools", emoji: "👥", widgets: ["workSymbols", "dice", "classList", "scoreboard"] },
   { label: "Lesson", emoji: "📚", widgets: ["timetable", "taskBreakdown", "progressTracker", "notes"] },
   { label: "Content", emoji: "🖥️", widgets: ["embedder", "youtubeWidget"] },
+  { label: "Class Tools", emoji: "👥", widgets: ["workSymbols", "dice", "classList", "scoreboard"] },
+  { label: "Timers", emoji: "⏱️", widgets: ["clock", "timer", "stopwatch"] },
 ];
 
 const PALETTES = {
@@ -402,6 +406,42 @@ function ProgressTrackerWidget({
 }
 
 // ── REPORT DRAFTING PANEL ──
+// Shows the raw notes a teacher captured on the /teacher phone view for a given
+// student/subject, so report drafting is grounded in what was actually observed
+// during lessons instead of starting from a blank textarea.
+function EvidenceList({
+  notes, onInsert, showSubject,
+}: {
+  notes: Note[];
+  onInsert?: (text: string) => void;
+  showSubject?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  if (notes.length === 0) return null;
+  return (
+    <div style={{ background: C.highlight, borderRadius: "10px", padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+      <button onClick={() => setExpanded(e => !e)} style={{ ...btnGhost, alignSelf: "flex-start", padding: "3px 10px", fontSize: "11px", borderRadius: "20px" }}>
+        {expanded ? "▲" : "▼"} 📱 {notes.length} note{notes.length === 1 ? "" : "s"} from phone
+      </button>
+      {expanded && notes.map(n => (
+        <div key={n.id} style={{ display: "flex", gap: "8px", alignItems: "flex-start", background: "#fff", borderRadius: "8px", padding: "8px 10px", fontSize: "12.5px", lineHeight: 1.5 }}>
+          <div style={{ flex: 1 }}>
+            <span style={{ color: C.muted, marginRight: "6px" }}>{n.date}</span>
+            {showSubject && n.subject && (
+              <span style={{ background: C.bg, borderRadius: "6px", padding: "1px 6px", marginRight: "6px", fontSize: "11px", fontWeight: 700, textTransform: "capitalize" }}>{n.subject}</span>
+            )}
+            {n.tags && <span style={{ background: C.bg, borderRadius: "6px", padding: "1px 6px", marginRight: "6px", fontSize: "11px", fontWeight: 700 }}>{n.tags}</span>}
+            {n.text}
+          </div>
+          {onInsert && (
+            <button onClick={() => onInsert(n.text)} style={{ ...btnGhost, padding: "3px 8px", fontSize: "11px", flexShrink: 0, whiteSpace: "nowrap" }}>+ Insert</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ReportDraftingPanel({
   students, subjectProfiles, reportData, setReportData, onClose
 }: {
@@ -414,6 +454,31 @@ function ReportDraftingPanel({
   const [selectedStudent, setSelectedStudent] = useState<string>(students[0]?.name || "");
   const [generating, setGenerating] = useState<{ [key: string]: boolean }>({});
   const [activeTab, setActiveTab] = useState<"literacy" | "maths" | "uoi" | "sel">("literacy");
+  const [phoneNotes, setPhoneNotes] = useState<Note[]>([]);
+  const [phoneNotesLoading, setPhoneNotesLoading] = useState(false);
+  const [apiUrlInput, setApiUrlInput] = useState<string>(getApiUrl());
+  const [editingApiUrl, setEditingApiUrl] = useState<boolean>(!getApiUrl());
+  const [notesRefreshTick, setNotesRefreshTick] = useState(0);
+
+  function connectApiUrl() {
+    setApiUrl(apiUrlInput);
+    setEditingApiUrl(false);
+    setNotesRefreshTick(v => v + 1);
+  }
+
+  // Pull in whatever's been logged on the /teacher phone view for this student —
+  // this is the actual evidence captured during lessons, and previously never
+  // made it into report drafting at all.
+  useEffect(() => {
+    if (!selectedStudent || !getApiUrl()) { setPhoneNotes([]); return; }
+    let cancelled = false;
+    setPhoneNotesLoading(true);
+    fetchNotes(selectedStudent)
+      .then((ns) => { if (!cancelled) setPhoneNotes(ns); })
+      .catch(() => { if (!cancelled) setPhoneNotes([]); })
+      .finally(() => { if (!cancelled) setPhoneNotesLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedStudent, notesRefreshTick]);
 
   const student = students.find(s => s.name === selectedStudent);
   const pronoun = student?.pronoun || "they";
@@ -451,13 +516,23 @@ function ReportDraftingPanel({
 
   const buildObsSummary = (subjectId: string) => {
     const profile = subjectProfiles[subjectId];
-    if (!profile?.observations?.[selectedStudent]) return "No observations recorded.";
-    const obs = profile.observations[selectedStudent];
-    const status = obs.status === "green" ? "Mastered" : obs.status === "amber" ? "Progressing" : obs.status === "red" ? "Needs support" : "Not tracked";
-    const atls = (obs.atlTags || []).join(", ") || "None recorded";
-    const star = obs.starMoment || "";
-    const notes = [obs.notes, ...(obs.anecdotalNotes || []).map(n => `${n.date}: ${n.text}`)].filter(Boolean).join(" | ");
-    return `Status: ${status}. ATL skills: ${atls}. ${star ? `Star moment: ${star}.` : ""} Notes: ${notes || "None."}`;
+    const obs = profile?.observations?.[selectedStudent];
+    const localPart = obs
+      ? (() => {
+          const status = obs.status === "green" ? "Mastered" : obs.status === "amber" ? "Progressing" : obs.status === "red" ? "Needs support" : "Not tracked";
+          const atls = (obs.atlTags || []).join(", ") || "None recorded";
+          const star = obs.starMoment || "";
+          const notesTxt = [obs.notes, ...(obs.anecdotalNotes || []).map(n => `${n.date}: ${n.text}`)].filter(Boolean).join(" | ");
+          return `Status: ${status}. ATL skills: ${atls}. ${star ? `Star moment: ${star}.` : ""} Notes: ${notesTxt || "None."}`;
+        })()
+      : "";
+    const relevantPhoneNotes = phoneNotes.filter(n => n.subject === subjectId);
+    const phonePart = relevantPhoneNotes.length
+      ? `Logged classroom observations (${relevantPhoneNotes.length}): ` +
+        relevantPhoneNotes.map(n => `[${n.date}${n.tags ? ` · ${n.tags}` : ""}] ${n.text}`).join(" || ")
+      : "";
+    const combined = [localPart, phonePart].filter(Boolean).join(" ");
+    return combined || "No observations recorded.";
   };
 
   const generateDraft = async (section: "literacy" | "maths" | "sel", unitIdx?: number) => {
@@ -611,6 +686,38 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
         </button>
       </div>
 
+      {editingApiUrl ? (
+        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", background: C.highlight, borderRadius: "10px", padding: "8px 10px" }}>
+          <span style={{ fontSize: "11px", color: C.muted, whiteSpace: "nowrap" }}>📱 Teacher API URL:</span>
+          <input
+            value={apiUrlInput}
+            onChange={(e) => setApiUrlInput(e.target.value)}
+            placeholder="https://script.google.com/macros/s/.../exec"
+            style={{ ...inputStyle, flex: "1 1 260px", fontSize: "12px", padding: "5px 10px" }}
+            onKeyDown={(e) => e.key === "Enter" && apiUrlInput.trim() && connectApiUrl()}
+          />
+          <button onClick={connectApiUrl} disabled={!apiUrlInput.trim()} style={{ ...btnSage, fontSize: "11px", padding: "5px 12px" }}>Connect</button>
+          {!!getApiUrl() && (
+            <button onClick={() => { setApiUrlInput(getApiUrl()); setEditingApiUrl(false); }} style={{ ...btnGhost, fontSize: "11px", padding: "5px 10px" }}>Cancel</button>
+          )}
+          <span style={{ fontSize: "10.5px", color: C.muted, width: "100%" }}>
+            Same URL as the "Teacher API URL" field on your phone's /teacher page — copy it from there so both devices read the same Google Sheet.
+          </span>
+        </div>
+      ) : phoneNotesLoading ? (
+        <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>Loading phone notes for {selectedStudent}…</span>
+      ) : phoneNotes.length === 0 ? (
+        <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
+          📱 No phone notes logged yet for {selectedStudent}.
+          <button onClick={() => setEditingApiUrl(true)} style={linkStyle}>Change API URL</button>
+        </span>
+      ) : (
+        <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
+          📱 {phoneNotes.length} phone note{phoneNotes.length === 1 ? "" : "s"} loaded for {selectedStudent} — used automatically in "Generate Draft" and shown below each section.
+          <button onClick={() => setEditingApiUrl(true)} style={linkStyle}>Change API URL</button>
+        </span>
+      )}
+
       {/* Tabs */}
       <div style={{ display: "flex", gap: "6px", borderBottom: `1.5px solid ${C.cardBorder}`, paddingBottom: "8px" }}>
         {TABS.map(tab => (
@@ -640,6 +747,10 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
               {generating.literacy ? "✨ Generating..." : "✨ Generate Draft"}
             </button>
           </div>
+          <EvidenceList
+            notes={phoneNotes.filter(n => n.subject === "literacy")}
+            onInsert={(text) => updateReport("literacy", "draft", report.literacy.draft ? `${report.literacy.draft}\n${text}` : text)}
+          />
           <textarea value={report.literacy.draft} onChange={e => updateReport("literacy", "draft", e.target.value)}
             placeholder="Click 'Generate Draft' or type directly..."
             style={{ ...inputStyle, minHeight: "160px", resize: "vertical", fontSize: "14px", lineHeight: 1.7 }} />
@@ -677,6 +788,10 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
               {generating.maths ? "✨ Generating..." : "✨ Generate Draft"}
             </button>
           </div>
+          <EvidenceList
+            notes={phoneNotes.filter(n => n.subject === "maths")}
+            onInsert={(text) => updateReport("maths", "draft", report.maths.draft ? `${report.maths.draft}\n${text}` : text)}
+          />
           <textarea value={report.maths.draft} onChange={e => updateReport("maths", "draft", e.target.value)}
             placeholder="Click 'Generate Draft' or type directly..."
             style={{ ...inputStyle, minHeight: "160px", resize: "vertical", fontSize: "14px", lineHeight: 1.7 }} />
@@ -739,6 +854,10 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
               <textarea value={report.uoi.unitDrafts[i] || ""} onChange={e => updateReport("uoi", "unitDraft", e.target.value, i)}
                 placeholder="Generate or type draft for this unit..."
                 style={{ ...inputStyle, minHeight: "120px", resize: "vertical", fontSize: "13px", lineHeight: 1.7 }} />
+              <EvidenceList
+                notes={phoneNotes.filter(n => n.subject === "uoi")}
+                onInsert={(text) => updateReport("uoi", "unitDraft", report.uoi.unitDrafts[i] ? `${report.uoi.unitDrafts[i]}\n${text}` : text, i)}
+              />
             </div>
           ))}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
@@ -775,6 +894,11 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
               {generating.sel ? "✨ Generating..." : "✨ Generate Draft"}
             </button>
           </div>
+          <EvidenceList
+            notes={phoneNotes}
+            showSubject
+            onInsert={(text) => updateReport("sel", "draft", report.sel.draft ? `${report.sel.draft}\n${text}` : text)}
+          />
           <textarea value={report.sel.draft} onChange={e => updateReport("sel", "draft", e.target.value)}
             placeholder="Click 'Generate Draft' or type directly. Based on ATL skills and classroom interactions."
             style={{ ...inputStyle, minHeight: "160px", resize: "vertical", fontSize: "14px", lineHeight: 1.7 }} />
@@ -1499,12 +1623,14 @@ return (
           {visible.timer && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.timer ? "span 2" : "span 1" }}>
               {!presentationMode && <button style={closeBtn} onClick={() => toggle("timer")}>×</button>}
-              <CircleTimer pct={seconds / (minutes * 60 || 1)} minutes={minutes} seconds={seconds} />
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "14px", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "14px" }}>
-                <input type="number" value={minutes} min={1} onChange={(e) => { const v = Math.max(1, Number(e.target.value)); setMinutes(v); if (!running) setSeconds(v * 60); }} style={{ ...inputStyle, width: "85px", fontSize: "16px", fontWeight: "bold", textAlign: "center" }} />
-                <button style={btnSage} onClick={() => setRunning(true)} disabled={running}>▶ START</button>
-                <button style={btnRose} onClick={() => setRunning(false)}>⏸ STOP</button>
-                <button style={btnGhost} onClick={() => { setRunning(false); setSeconds(minutes * 60); }}>↺ RESET</button>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "28px", flexWrap: "wrap-reverse" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: "10px", minWidth: "150px" }}>
+                  <input type="number" value={minutes} min={1} onChange={(e) => { const v = Math.max(1, Number(e.target.value)); setMinutes(v); if (!running) setSeconds(v * 60); }} style={{ ...inputStyle, fontSize: "16px", fontWeight: "bold", textAlign: "center" }} />
+                  <button style={btnSage} onClick={() => setRunning(true)} disabled={running}>▶ START</button>
+                  <button style={btnRose} onClick={() => setRunning(false)}>⏸ STOP</button>
+                  <button style={btnGhost} onClick={() => { setRunning(false); setSeconds(minutes * 60); }}>↺ RESET</button>
+                </div>
+                <CircleTimer pct={seconds / (minutes * 60 || 1)} minutes={minutes} seconds={seconds} />
               </div>
             </div>
           )}
