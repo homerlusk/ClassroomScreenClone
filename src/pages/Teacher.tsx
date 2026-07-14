@@ -220,12 +220,21 @@ export default function Teacher() {
   useEffect(() => {
     if (!subject) { setObservedToday(new Set()); return; }
     const todayStr = new Date().toISOString().slice(0, 10);
-    fetchNotes().then((allNotes) => {
-      const names = new Set(
-        allNotes.filter(n => n.subject === subject && n.date === todayStr).map(n => n.studentName)
-      );
-      setObservedToday(names);
-    }).catch(() => {});
+    fetchNotes()
+      .then((allNotes) => {
+        const names = new Set(
+          allNotes
+            .filter(n => n.subject === subject && n.date === todayStr)
+            .map(n => n.studentName)
+        );
+        setObservedToday(names);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch notes for observed-today count:", err);
+        setConnectionError(
+          "Couldn't load today's observed count: " + (err instanceof Error ? err.message : "unknown error")
+        );
+      });
   }, [subject, savedFlash]);
 
   useEffect(() => {
