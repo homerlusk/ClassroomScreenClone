@@ -153,6 +153,8 @@ export default function Teacher() {
   const [lastSavedTag, setLastSavedTag] = useState<string | null>(null);
   // Which grade's reason picker is currently expanded (null = none open).
   const [expandedGrade, setExpandedGrade] = useState<string | null>(null);
+  const [showAbsent, setShowAbsent] = useState(false);
+  const [showMoreTags, setShowMoreTags] = useState(false);
   // Which reason chip was just picked, kept visible briefly so the save is
   // unmistakable before the panel closes — closing instantly made it unclear
   // whether the tap actually registered.
@@ -378,11 +380,16 @@ export default function Teacher() {
       <>
       {students.length > 0 && (
         <div style={styles.observedCount}>
-          👀 {observedToday.size} of {students.length} observed today in this subject
+          👀 {observedToday.size} of {students.filter(s => s.present).length} observed today in this subject
+          {students.some(s => !s.present) && (
+            <button style={styles.linkButtonInline} onClick={() => setShowAbsent(a => !a)}>
+              {showAbsent ? "Hide" : "Show"} absent ({students.filter(s => !s.present).length})
+            </button>
+          )}
         </div>
       )}
       <div style={styles.studentGrid}>
-        {students.map((s) => {
+        {students.filter(s => s.present || showAbsent).map((s) => {
           const isObserved = observedToday.has(s.name);
           const isActive = selectedStudent === s.name;
           return (
@@ -391,11 +398,12 @@ export default function Teacher() {
               onClick={() => setSelectedStudent(s.name)}
               style={{
                 ...styles.studentChip,
+                ...(!s.present ? styles.studentChipAbsent : {}),
                 ...(isObserved && !isActive ? styles.studentChipObserved : {}),
                 ...(isActive ? styles.studentChipActive : {}),
               }}
             >
-              {isObserved && !isActive ? "✓ " : ""}{s.name}
+              {isObserved && !isActive ? "✓ " : ""}{s.name}{!s.present ? " (absent)" : ""}
             </button>
           );
         })}
@@ -505,28 +513,32 @@ export default function Teacher() {
             </div>
           )}
 
-          <div style={styles.intentionLabel}>More</div>
-          <div style={styles.quickTagGrid}>
-            {QUICK_TAGS.map((t) => {
-              const isJustSaved = lastSavedTag === t.label;
-              return (
-                <button
-                  key={t.label}
-                  disabled={saving}
-                  style={{
-                    ...styles.quickTagButton,
-                    background: isJustSaved ? "#4e7a60" : "#ebe5d9",
-                    color: isJustSaved ? "white" : "#2c2825",
-                    transform: isJustSaved ? "scale(0.96)" : "scale(1)",
-                  }}
-                  onClick={() => saveObservation(freeText.trim() || t.label, t.label)}
-                >
-                  <span style={{ fontSize: 22 }}>{isJustSaved ? "✓" : t.emoji}</span>
-                  <span>{t.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          <button style={styles.moreTagsToggle} onClick={() => setShowMoreTags(v => !v)}>
+            {showMoreTags ? "▲ Fewer tags" : "▼ More tags"}
+          </button>
+          {showMoreTags && (
+            <div style={styles.quickTagGrid}>
+              {QUICK_TAGS.map((t) => {
+                const isJustSaved = lastSavedTag === t.label;
+                return (
+                  <button
+                    key={t.label}
+                    disabled={saving}
+                    style={{
+                      ...styles.quickTagButton,
+                      background: isJustSaved ? "#4e7a60" : "#ebe5d9",
+                      color: isJustSaved ? "white" : "#2c2825",
+                      transform: isJustSaved ? "scale(0.96)" : "scale(1)",
+                    }}
+                    onClick={() => saveObservation(freeText.trim() || t.label, t.label)}
+                  >
+                    <span style={{ fontSize: 22 }}>{isJustSaved ? "✓" : t.emoji}</span>
+                    <span>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {recentNotes.length > 0 && (
             <div style={styles.recentList}>
@@ -567,7 +579,10 @@ const styles: Record<string, React.CSSProperties> = {
   studentChip: { padding: "10px 14px", borderRadius: 20, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer" },
   studentChipActive: { background: "#3d5a80", color: "white", borderColor: "#3d5a80" },
   studentChipObserved: { opacity: 0.4, background: "#e3ddd0" },
-  observedCount: { fontSize: 11.5, color: "#7a7068", marginBottom: 6 },
+  studentChipAbsent: { opacity: 0.55, borderStyle: "dashed", fontStyle: "italic" },
+  observedCount: { fontSize: 11.5, color: "#7a7068", marginBottom: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  linkButtonInline: { background: "none", border: "none", color: "#3d5a80", fontSize: 11, textDecoration: "underline", cursor: "pointer", padding: 0 },
+  moreTagsToggle: { background: "none", border: "none", color: "#7a7068", fontSize: 12, cursor: "pointer", padding: "4px 0", marginBottom: 6, textAlign: "left" },
   quickTagGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 },
   quickTagButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: 14, borderRadius: 14, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer", fontSize: 13, transition: "all 0.15s ease" },
   ragRow: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 10 },
