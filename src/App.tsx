@@ -849,6 +849,7 @@ export default function App() {
   const [workMode, setWorkMode] = useState<{ id: string; icon: string; label: string; color: string; bg: string }>(WORK_MODES[0]);
   const [activeGroupMenu, setActiveGroupMenu] = useState<string | null>(null);
   const [confirmClearActive, setConfirmClearActive] = useState<boolean>(false);
+  const [presentationMode, setPresentationMode] = useState<boolean>(() => localStorage.getItem("presentationMode") === "1");
   const [visible, setVisible] = useState<Record<Widget, boolean>>({
     timetable: true, taskBreakdown: false, progressTracker: false, clock: false, timer: false,
     stopwatch: false, notes: false, classList: false, scoreboard: false, dice: false,
@@ -921,6 +922,22 @@ const playTimerChime = () => {
   useEffect(() => { localStorage.setItem("uoiThemePresetsRegistry", JSON.stringify(themePresets)); }, [themePresets]);
   useEffect(() => { localStorage.setItem("reportData", JSON.stringify(reportData)); }, [reportData]);
 
+  // Presentation mode: a one-tap way to hide every teacher/editing control so the
+  // shared screen only shows what students need to see. Entering it force-closes
+  // any open editing panels so nothing is left mid-edit and exposed on the display.
+  useEffect(() => {
+    localStorage.setItem("presentationMode", presentationMode ? "1" : "0");
+    if (presentationMode) {
+      setIsEditingMaterials(false);
+      setIsEditingPresets(false);
+      setShowReportPanel(false);
+      setActiveGroupMenu(null);
+      setConfirmClearActive(false);
+      // Per-student assessment data shouldn't be projected to the whole class,
+      // so this widget is hidden (not just locked) while presenting.
+      setVisible((v) => (v.progressTracker ? { ...v, progressTracker: false } : v));
+    }
+  }, [presentationMode]);
 
   useEffect(() => {
     if (!getApiUrl()) return;
@@ -1113,7 +1130,7 @@ return (
       {/* ── LEFT SIDEBAR ── */}
       {showSidebar && (
         <div style={{ width: "110px", borderRight: `2px solid ${C.cardBorder}`, background: C.card, padding: "12px 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", boxSizing: "border-box", overflowY: "auto", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>
-          {confirmClearActive ? (
+          {!presentationMode && (confirmClearActive ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%", background: "#f8d7da", border: `1px solid ${C.roses}`, padding: "6px", borderRadius: "8px" }}>
               <span style={{ fontSize: "11px", fontWeight: "bold", textAlign: "center", color: C.roseDark }}>Confirm?</span>
               <button onClick={() => { setTimetable([]); setConfirmClearActive(false); }} style={{ ...btnRose, padding: "4px", fontSize: "11px", borderRadius: "6px" }}>Yes</button>
@@ -1121,7 +1138,7 @@ return (
             </div>
           ) : (
             <button onClick={() => setConfirmClearActive(true)} style={{ ...btnGhost, fontSize: "11px", padding: "6px 8px", borderRadius: "10px", width: "100%", whiteSpace: "nowrap" }}>🗑️ Clear All</button>
-          )}
+          ))}
           <div style={{ display: "flex", flexDirection: "column", gap: "14px", width: "100%", alignItems: "center" }}>
             {timetable.map((item) => {
               const lt = LESSON_TYPES.find((l) => l.id === item.lessonId) || LESSON_TYPES[LESSON_TYPES.length - 1];
@@ -1133,7 +1150,7 @@ return (
                     style={{ background: isCurrentHeadline ? C.highlight : lt.bg, border: isCurrentHeadline ? "3px solid #000" : `2px solid ${lt.color}`, boxShadow: isCurrentHeadline ? "0 0 12px rgba(0,0,0,0.15)" : "none", borderRadius: "14px", width: "68px", height: "68px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", boxSizing: "border-box", opacity: item.done ? 0.4 : 1, transition: "all 0.15s" }}>
                     <LessonIcon id={lt.id} size={32} />
                   </button>
-                  {isHovered && (
+                  {!presentationMode && isHovered && (
                     <button onClick={(e) => { e.stopPropagation(); setTimetable(timetable.filter(t => t.id !== item.id)); }}
                       style={{ position: "absolute", top: "-6px", right: "-6px", background: C.roses, color: "#fff", border: "1.5px solid #000", borderRadius: "50%", width: "20px", height: "20px", fontSize: "12px", fontWeight: "900", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 5 }}>×</button>
                   )}
@@ -1147,7 +1164,8 @@ return (
       {/* ── MAIN AREA ── */}
       <div style={{ flex: 1, padding: "12px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: "24px", minWidth: 0, maxWidth: "100%" }}>
 
-        {/* TOOLBAR */}
+        {/* TOOLBAR (teacher-only — hidden in presentation mode) */}
+        {!presentationMode && (
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", background: C.card, padding: "12px 18px", borderRadius: "16px", border: `1.5px solid ${C.cardBorder}`, alignItems: "center", width: "100%", boxSizing: "border-box", position: "relative" }}>
           {WIDGET_GROUPS.map((group) => {
             const isMenuOpen = activeGroupMenu === group.label;
@@ -1207,9 +1225,10 @@ return (
             📥 Export Summary
           </button>
         </div>
+        )}
 
         {/* MATERIALS PANEL */}
-        {isEditingMaterials && (
+        {!presentationMode && isEditingMaterials && (
           <div style={{ ...cardStyle, background: "#fff", border: "2px dashed #000", padding: "16px", gap: "10px" }}>
             <span style={{ ...labelStyle, fontSize: "11px" }}>Configure Dashboard Active Student Desk Items:</span>
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
@@ -1228,7 +1247,7 @@ return (
         )}
 
         {/* THEME PRESETS PANEL */}
-        {isEditingPresets && (
+        {!presentationMode && isEditingPresets && (
           <div style={{ ...cardStyle, background: "#fff", border: "2px dashed #000", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
             <span style={{ ...labelStyle, fontSize: "11px" }}>Load or Customize UOI Transdisciplinary Theme Presets:</span>
             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", borderBottom: `1.5px solid ${C.cardBorder}`, paddingBottom: "10px" }}>
@@ -1288,13 +1307,43 @@ return (
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px" }}>
                   {isUoi && <span style={{ ...labelStyle, fontSize: "11px", color: "#000" }}>🎯 Guiding Question:</span>}
-                  <textarea value={currentProfile.learningObjective} onChange={(e) => updateProfileField("learningObjective", e.target.value)} style={{ ...inputStyle, background: "#fff", border: "2.5px solid #000", padding: "14px 18px", color: "#000", fontSize: "20px", fontWeight: "700", height: "85px", resize: "none" }} />
+                  <textarea
+                    value={currentProfile.learningObjective}
+                    onChange={(e) => updateProfileField("learningObjective", e.target.value)}
+                    readOnly={presentationMode}
+                    style={{
+                      ...inputStyle,
+                      background: presentationMode ? "transparent" : "#fff",
+                      border: presentationMode ? "none" : "2.5px solid #000",
+                      padding: presentationMode ? "6px 2px" : "14px 18px",
+                      color: "#000", fontWeight: "800",
+                      fontSize: presentationMode ? "28px" : "20px",
+                      height: presentationMode ? "auto" : "85px",
+                      resize: "none",
+                      cursor: presentationMode ? "default" : "text",
+                    }}
+                  />
                 </div>
                 {isUoi && (
                   <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "4px" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                       <span style={{ ...labelStyle, fontSize: "11px", color: "#000" }}>💡 Central Idea:</span>
-                      <textarea value={currentProfile.centralIdea || ""} onChange={(e) => updateProfileField("centralIdea", e.target.value)} style={{ ...inputStyle, background: "#fff", border: "2.5px solid #000", padding: "14px 18px", color: "#000", fontSize: "18px", fontWeight: "700", height: "65px", resize: "none" }} />
+                      <textarea
+                        value={currentProfile.centralIdea || ""}
+                        onChange={(e) => updateProfileField("centralIdea", e.target.value)}
+                        readOnly={presentationMode}
+                        style={{
+                          ...inputStyle,
+                          background: presentationMode ? "transparent" : "#fff",
+                          border: presentationMode ? "none" : "2.5px solid #000",
+                          padding: presentationMode ? "4px 2px" : "14px 18px",
+                          color: "#000", fontWeight: "700",
+                          fontSize: presentationMode ? "22px" : "18px",
+                          height: presentationMode ? "auto" : "65px",
+                          resize: "none",
+                          cursor: presentationMode ? "default" : "text",
+                        }}
+                      />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       <span style={{ ...labelStyle, fontSize: "11px", color: "#000" }}>🔍 Lines of Inquiry:</span>
@@ -1306,7 +1355,8 @@ return (
                             style={{ display: "flex", alignItems: "center", gap: "14px", background: isHighlighted ? `${activeHeadlineItem.color}15` : "#fff", padding: "14px 18px", borderRadius: "14px", border: isHighlighted ? `3px solid ${activeHeadlineItem.color}` : `1.5px solid ${C.cardBorder}`, cursor: "pointer", width: "100%", boxSizing: "border-box", transition: "all 0.15s ease-in-out" }}>
                             <span style={{ fontWeight: "900", fontSize: "15px", color: activeHeadlineItem.color, whiteSpace: "nowrap" }}>LOI {num}:</span>
                             <input value={(currentProfile[loiKey] as string) || ""} onChange={(e) => { e.stopPropagation(); updateProfileField(loiKey, e.target.value); }} onClick={(e) => e.stopPropagation()}
-                              style={{ background: "none", border: "none", outline: "none", width: "100%", fontSize: "16px", fontWeight: isHighlighted ? "800" : "700", color: "#000", fontFamily: font }} />
+                              readOnly={presentationMode}
+                              style={{ background: "none", border: "none", outline: "none", width: "100%", fontSize: presentationMode ? "19px" : "16px", fontWeight: isHighlighted ? "800" : "700", color: "#000", fontFamily: font, cursor: presentationMode ? "default" : "text" }} />
                             {isHighlighted && <span style={{ fontSize: "18px", flexShrink: 0 }}>🎯</span>}
                           </div>
                         );
@@ -1322,11 +1372,13 @@ return (
         {/* PACING STEPS */}
         {visible.taskBreakdown && (
           <div style={{ ...cardStyle, border: timetable.length > 0 && activeHeadlineItem ? `2.5px solid ${activeHeadlineItem.color}` : `1.5px solid ${C.cardBorder}`, background: "#fff" }}>
-            <button style={closeBtn} onClick={() => toggle("taskBreakdown")}>×</button>
-            <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-              <input style={inputStyle} type="text" value={newSubTaskText} onChange={(e) => setNewSubTaskText(e.target.value)} placeholder="Enter a new step..." onKeyDown={(e) => e.key === 'Enter' && addSubTask()} />
-              <button onClick={addSubTask} style={btnSage}>Add Step</button>
-            </div>
+            {!presentationMode && <button style={closeBtn} onClick={() => toggle("taskBreakdown")}>×</button>}
+            {!presentationMode && (
+              <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+                <input style={inputStyle} type="text" value={newSubTaskText} onChange={(e) => setNewSubTaskText(e.target.value)} placeholder="Enter a new step..." onKeyDown={(e) => e.key === 'Enter' && addSubTask()} />
+                <button onClick={addSubTask} style={btnSage}>Add Step</button>
+              </div>
+            )}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
               {(currentProfile?.subTasks?.length ?? 0) > 0 ? currentProfile.subTasks.map((task) => {
                 const isTaskFocused = currentProfile.activeTaskId === task.id;
@@ -1337,7 +1389,7 @@ return (
                     <input type="checkbox" checked={task.done} onClick={(e) => e.stopPropagation()} onChange={() => updateProfileField("subTasks", currentProfile.subTasks.map(t => t.id === task.id ? { ...t, done: !t.done } : t))} style={{ width: "20px", height: "20px", cursor: "pointer" }} />
                     <span style={{ fontSize: isTaskFocused ? "19px" : "16px", fontWeight: "700", color: isTaskFocused && !task.done ? "#fff" : "#000", textDecoration: task.done ? "line-through" : "none", flex: 1, transition: "font-size 0.2s" }}>{task.text}</span>
                     {isTaskFocused && !task.done && <span style={{ fontSize: "14px", color: "#fff", background: "rgba(0,0,0,0.2)", padding: "4px 8px", borderRadius: "6px", fontWeight: "bold" }}>CURRENT STEP 🎯</span>}
-                    <button onClick={(e) => { e.stopPropagation(); updateProfileField("subTasks", currentProfile.subTasks.filter(t => t.id !== task.id)); }} style={{ background: "none", border: "none", color: isTaskFocused ? "#fff" : C.muted, cursor: "pointer", fontSize: "16px" }}>×</button>
+                    {!presentationMode && <button onClick={(e) => { e.stopPropagation(); updateProfileField("subTasks", currentProfile.subTasks.filter(t => t.id !== task.id)); }} style={{ background: "none", border: "none", color: isTaskFocused ? "#fff" : C.muted, cursor: "pointer", fontSize: "16px" }}>×</button>}
                   </div>
                 );
               }) : <span style={{ color: C.muted, fontSize: "13px", fontStyle: "italic" }}>No visual steps added.</span>}
@@ -1349,7 +1401,7 @@ return (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", width: "100%", boxSizing: "border-box" }}>
 
           {/* REPORT DRAFTING PANEL */}
-          {showReportPanel && students.length > 0 && (
+          {!presentationMode && showReportPanel && students.length > 0 && (
             <ReportDraftingPanel
               students={students}
               subjectProfiles={subjectProfiles}
@@ -1358,7 +1410,7 @@ return (
               onClose={() => setShowReportPanel(false)}
             />
           )}
-          {showReportPanel && students.length === 0 && (
+          {!presentationMode && showReportPanel && students.length === 0 && (
             <div style={{ ...cardStyle, gridColumn: "span 2", background: "#fff", border: "2px dashed #000" }}>
               <button style={closeBtn} onClick={() => setShowReportPanel(false)}>×</button>
               <p style={{ color: C.muted, fontStyle: "italic", fontSize: "14px", margin: "24px 0 0" }}>
@@ -1377,11 +1429,13 @@ return (
           {/* EMBEDDER */}
           {visible.embedder && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.embedder ? "span 2" : "span 1", background: "#fff", border: "2px solid #000" }}>
-              <button style={closeBtn} onClick={() => toggle("embedder")}>×</button>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginTop: "12px" }}>
-                <button onClick={() => setIsEmbedInputCollapsed(!isEmbedInputCollapsed)} style={{ ...btnGhost, fontSize: "11px", padding: "4px 12px" }}>{isEmbedInputCollapsed ? "⚙️ Show Code Box" : "Hide Input Code Box"}</button>
-              </div>
-              {!isEmbedInputCollapsed && <textarea defaultValue={embedHtml} onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) => setEmbedHtml(e.target.value)} placeholder="Paste iframe embed code..." style={{ ...inputStyle, height: "70px", fontFamily: "monospace", fontSize: "13px" }} />}
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("embedder")}>×</button>}
+              {!presentationMode && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginTop: "12px" }}>
+                  <button onClick={() => setIsEmbedInputCollapsed(!isEmbedInputCollapsed)} style={{ ...btnGhost, fontSize: "11px", padding: "4px 12px" }}>{isEmbedInputCollapsed ? "⚙️ Show Code Box" : "Hide Input Code Box"}</button>
+                </div>
+              )}
+              {!presentationMode && !isEmbedInputCollapsed && <textarea defaultValue={embedHtml} onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) => setEmbedHtml(e.target.value)} placeholder="Paste iframe embed code..." style={{ ...inputStyle, height: "70px", fontFamily: "monospace", fontSize: "13px" }} />}
               {MemoizedIframeContainer}
             </div>
           )}
@@ -1389,11 +1443,13 @@ return (
           {/* YOUTUBE */}
           {visible.youtubeWidget && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.youtubeWidget ? "span 2" : "span 1", background: "#fff", border: "2px solid #000" }}>
-              <button style={closeBtn} onClick={() => toggle("youtubeWidget")}>×</button>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginTop: "12px" }}>
-                <button onClick={() => setIsYoutubeInputCollapsed(!isYoutubeInputCollapsed)} style={{ ...btnGhost, fontSize: "11px", padding: "4px 12px" }}>{isYoutubeInputCollapsed ? "⚙️ Show URL Input" : "Hide Link Input Box"}</button>
-              </div>
-              {!isYoutubeInputCollapsed && <input type="text" defaultValue={youtubeUrl} onBlur={(e: React.FocusEvent<HTMLInputElement>) => setYoutubeUrl(e.target.value)} placeholder="Paste YouTube URL..." style={inputStyle} />}
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("youtubeWidget")}>×</button>}
+              {!presentationMode && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginTop: "12px" }}>
+                  <button onClick={() => setIsYoutubeInputCollapsed(!isYoutubeInputCollapsed)} style={{ ...btnGhost, fontSize: "11px", padding: "4px 12px" }}>{isYoutubeInputCollapsed ? "⚙️ Show URL Input" : "Hide Link Input Box"}</button>
+                </div>
+              )}
+              {!presentationMode && !isYoutubeInputCollapsed && <input type="text" defaultValue={youtubeUrl} onBlur={(e: React.FocusEvent<HTMLInputElement>) => setYoutubeUrl(e.target.value)} placeholder="Paste YouTube URL..." style={inputStyle} />}
               {youtubeEmbedId ? (
                 <div style={{ width: "100%", position: "relative", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", background: "#000", border: `2px solid ${C.cardBorder}` }}>
                   <iframe style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }} src={`https://www.youtube.com/embed/${youtubeEmbedId}`} title="YouTube player" allowFullScreen />
@@ -1405,7 +1461,7 @@ return (
           {/* TIMETABLE SETUP */}
           {visible.timetable && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.timetable ? "span 2" : "span 1" }}>
-              <button style={closeBtn} onClick={() => toggle("timetable")}>×</button>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("timetable")}>×</button>}
               <div style={{ background: C.highlight, padding: "12px", borderRadius: "14px", display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginTop: "12px" }}>
                 <select onChange={(e: React.ChangeEvent<HTMLSelectElement>) => loadTemplate(e.target.value)} defaultValue="" style={{ ...inputStyle, width: "auto", flex: 1, padding: "6px 10px", fontSize: "14px" }}>
                   <option value="" disabled>-- Load Saved Template --</option>
@@ -1432,7 +1488,7 @@ return (
           {/* CLOCK */}
           {visible.clock && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.clock ? "span 2" : "span 1" }}>
-              <button style={closeBtn} onClick={() => toggle("clock")}>×</button>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("clock")}>×</button>}
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "220px" }}>
                 <div style={{ fontSize: "74px", fontWeight: "800", letterSpacing: "-2px", color: C.text }}>{time.toLocaleTimeString()}</div>
               </div>
@@ -1442,7 +1498,7 @@ return (
           {/* TIMER */}
           {visible.timer && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.timer ? "span 2" : "span 1" }}>
-              <button style={closeBtn} onClick={() => toggle("timer")}>×</button>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("timer")}>×</button>}
               <CircleTimer pct={seconds / (minutes * 60 || 1)} minutes={minutes} seconds={seconds} />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "14px", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "14px" }}>
                 <input type="number" value={minutes} min={1} onChange={(e) => { const v = Math.max(1, Number(e.target.value)); setMinutes(v); if (!running) setSeconds(v * 60); }} style={{ ...inputStyle, width: "85px", fontSize: "16px", fontWeight: "bold", textAlign: "center" }} />
@@ -1456,7 +1512,7 @@ return (
           {/* STOPWATCH */}
           {visible.stopwatch && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.stopwatch ? "span 2" : "span 1" }}>
-              <button style={closeBtn} onClick={() => toggle("stopwatch")}>×</button>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("stopwatch")}>×</button>}
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "180px" }}>
                 <div style={{ fontSize: "68px", fontWeight: "800", color: swRunning ? C.sageDark : C.text }}>{swFormatted}</div>
               </div>
@@ -1471,7 +1527,7 @@ return (
           {/* WORK MODES */}
           {visible.workSymbols && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.workSymbols ? "span 2" : "span 1" }}>
-              <button style={closeBtn} onClick={() => toggle("workSymbols")}>×</button>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("workSymbols")}>×</button>}
               <div style={{ background: workMode.color, borderRadius: "14px", padding: "32px 24px", textAlign: "center", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", marginTop: "12px" }}>
                 <div style={{ fontWeight: "900", fontSize: "36px", color: "#fff", letterSpacing: "2px", textTransform: "uppercase" }}>{workMode.label}</div>
               </div>
@@ -1486,7 +1542,7 @@ return (
           {/* DICE */}
           {visible.dice && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.dice ? "span 2" : "span 1" }}>
-              <button style={closeBtn} onClick={() => toggle("dice")}>×</button>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("dice")}>×</button>}
               <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", minHeight: "180px" }}>
                 <div style={{ transition: rolling ? "transform 0.08s" : "none", transform: rolling ? `rotate(${Math.random() * 20 - 10}deg)` : "none" }}>
                   <DiceFace value={diceValue} />
@@ -1499,7 +1555,7 @@ return (
           {/* NOTES */}
           {visible.notes && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.notes ? "span 2" : "span 1" }}>
-              <button style={closeBtn} onClick={() => toggle("notes")}>×</button>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("notes")}>×</button>}
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Type shared lesson summary notes here…" style={{ ...inputStyle, flex: 1, minHeight: "220px", resize: "none", marginTop: "12px" }} />
             </div>
           )}
@@ -1507,7 +1563,7 @@ return (
           {/* CLASS ROSTER */}
           {visible.classList && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.classList ? "span 2" : "span 1" }}>
-              <button style={closeBtn} onClick={() => toggle("classList")}>×</button>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("classList")}>×</button>}
               <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
                 <input value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="Name…"
                   onKeyDown={(e) => { if (e.key === "Enter" && studentName.trim()) { e.preventDefault(); setStudents([...students, { name: studentName.trim(), present: true, pronoun: "they" }]); setStudentName(""); } }}
@@ -1560,7 +1616,7 @@ return (
           {/* SCOREBOARD */}
           {visible.scoreboard && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.scoreboard ? "span 2" : "span 1" }}>
-              <button style={closeBtn} onClick={() => toggle("scoreboard")}>×</button>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("scoreboard")}>×</button>}
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", flex: 1, alignItems: "center", marginTop: "12px" }}>
                 {teams.map((team) => (
                   <div key={team.id} style={{ flex: "1 1 100px", background: C.bg, border: `2px solid ${team.color}`, borderRadius: "14px", padding: "10px", textAlign: "center" }}>
@@ -1584,6 +1640,38 @@ return (
 
         </div>
       </div>
+
+      {/* PRESENTATION MODE TOGGLE — always available, kept deliberately small and
+          low-contrast so it doesn't compete for a student's attention, but never hidden. */}
+      <button
+        onClick={() => setPresentationMode((p) => !p)}
+        title={presentationMode ? "Exit presentation mode" : "Enter presentation mode (hides all editing controls)"}
+        style={{
+          position: "fixed",
+          bottom: "14px",
+          right: "14px",
+          zIndex: 1000,
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          padding: presentationMode ? "8px 10px" : "9px 16px",
+          borderRadius: "999px",
+          border: `1.5px solid ${presentationMode ? "rgba(0,0,0,0.15)" : C.cardBorder}`,
+          background: presentationMode ? "rgba(255,255,255,0.55)" : C.card,
+          color: presentationMode ? "rgba(44,40,37,0.55)" : C.text,
+          fontFamily: font,
+          fontWeight: 700,
+          fontSize: "12px",
+          cursor: "pointer",
+          boxShadow: presentationMode ? "none" : "0 2px 8px rgba(0,0,0,0.08)",
+          opacity: presentationMode ? 0.55 : 1,
+          transition: "all 0.15s ease",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.opacity = presentationMode ? "0.55" : "1"; }}
+      >
+        {presentationMode ? "🚪 Exit Presentation" : "🖥️ Presentation Mode"}
+      </button>
     </div>
   );
 }
