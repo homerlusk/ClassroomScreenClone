@@ -157,6 +157,10 @@ export default function Teacher() {
   // unmistakable before the panel closes — closing instantly made it unclear
   // whether the tap actually registered.
   const [justSavedReason, setJustSavedReason] = useState<string | null>(null);
+  // Names of students who already have a note logged for today, in the
+  // currently active subject — used to grey out the roster so it's easy to
+  // see at a glance who hasn't been observed yet.
+  const [observedToday, setObservedToday] = useState<Set<string>>(new Set());
 
   const { start: startListening, listening, supported: micSupported } = useSpeechToText(
     (text) => setFreeText((prev) => (prev ? `${prev} ${text}` : text))
@@ -210,6 +214,17 @@ export default function Teacher() {
       }).catch(() => {});
     }
   }, [selectedStudent, savedFlash]);
+
+  useEffect(() => {
+    if (!subject) { setObservedToday(new Set()); return; }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    fetchNotes().then((allNotes) => {
+      const names = new Set(
+        allNotes.filter(n => n.subject === subject && n.date === todayStr).map(n => n.studentName)
+      );
+      setObservedToday(names);
+    }).catch(() => {});
+  }, [subject, savedFlash]);
 
   useEffect(() => {
     setExpandedGrade(null);
@@ -360,17 +375,32 @@ export default function Teacher() {
       )}
 
       {subject && (
+      <>
+      {students.length > 0 && (
+        <div style={styles.observedCount}>
+          👀 {observedToday.size} of {students.length} observed today in this subject
+        </div>
+      )}
       <div style={styles.studentGrid}>
-        {students.map((s) => (
-          <button
-            key={s.name}
-            onClick={() => setSelectedStudent(s.name)}
-            style={{ ...styles.studentChip, ...(selectedStudent === s.name ? styles.studentChipActive : {}) }}
-          >
-            {s.name}
-          </button>
-        ))}
+        {students.map((s) => {
+          const isObserved = observedToday.has(s.name);
+          const isActive = selectedStudent === s.name;
+          return (
+            <button
+              key={s.name}
+              onClick={() => setSelectedStudent(s.name)}
+              style={{
+                ...styles.studentChip,
+                ...(isObserved && !isActive ? styles.studentChipObserved : {}),
+                ...(isActive ? styles.studentChipActive : {}),
+              }}
+            >
+              {isObserved && !isActive ? "✓ " : ""}{s.name}
+            </button>
+          );
+        })}
       </div>
+      </>
       )}
 
       {selectedStudent && (
@@ -536,6 +566,8 @@ const styles: Record<string, React.CSSProperties> = {
   studentGrid: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 },
   studentChip: { padding: "10px 14px", borderRadius: 20, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer" },
   studentChipActive: { background: "#3d5a80", color: "white", borderColor: "#3d5a80" },
+  studentChipObserved: { opacity: 0.4, background: "#e3ddd0" },
+  observedCount: { fontSize: 11.5, color: "#7a7068", marginBottom: 6 },
   quickTagGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 },
   quickTagButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: 14, borderRadius: 14, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer", fontSize: 13, transition: "all 0.15s ease" },
   ragRow: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 10 },
