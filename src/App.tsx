@@ -443,13 +443,14 @@ function EvidenceList({
 }
 
 function ReportDraftingPanel({
-  students, setStudents, subjectProfiles, reportData, setReportData, onClose
+  students, setStudents, subjectProfiles, reportData, setReportData, themePresets, onClose
 }: {
   students: Student[];
   setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
   subjectProfiles: Record<string, SubjectProfile>;
   reportData: ReportData;
   setReportData: React.Dispatch<React.SetStateAction<ReportData>>;
+  themePresets: Record<string, Presets>;
   onClose: () => void;
 }) {
   const [selectedStudent, setSelectedStudent] = useState<string>(students[0]?.name || "");
@@ -1130,6 +1131,22 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
                   updated[i] = { ...updated[i], title: e.target.value };
                   setReportData(prev => ({ ...prev, units: updated }));
                 }} placeholder="Unit title..." style={{ ...inputStyle, flex: 1, fontSize: "13px", padding: "4px 10px" }} />
+                <select
+                  value=""
+                  onChange={e => {
+                    const key = e.target.value;
+                    if (!key || !themePresets[key]) return;
+                    const preset = themePresets[key];
+                    const updated = [...reportData.units];
+                    updated[i] = { title: key, centralIdea: preset.centralIdea, loi1: preset.loi1, loi2: preset.loi2, loi3: preset.loi3 };
+                    setReportData(prev => ({ ...prev, units: updated }));
+                  }}
+                  style={{ ...inputStyle, width: "auto", fontSize: "11px", padding: "4px 8px", flexShrink: 0 }}
+                  title="Fill this unit from a saved Theme Preset"
+                >
+                  <option value="">📥 Load preset...</option>
+                  {Object.keys(themePresets).map(key => <option key={key} value={key}>{key}</option>)}
+                </select>
                 <button onClick={() => compileUoiFromNotes(i)}
                   style={{ ...btnGhost, padding: "6px 12px", fontSize: "11px", whiteSpace: "nowrap" }}>
                   📋 Compile (free)
@@ -1865,6 +1882,7 @@ return (
               subjectProfiles={subjectProfiles}
               reportData={reportData}
               setReportData={setReportData}
+              themePresets={themePresets}
               onClose={() => setShowReportPanel(false)}
             />
           )}

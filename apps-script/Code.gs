@@ -111,7 +111,7 @@ function doPost(e) {
         payload.date || "", payload.week || "",
         payload.studentName || "", payload.subject || "",
         payload.unitTitle || "", payload.learningIntention || "",
-        (payload.tags || []).join(","), payload.text || ""
+        (payload.tags || ""), payload.text || ""
       ]);
       return jsonResponse_({ ok: true, id, createdAt });
     }
@@ -143,21 +143,16 @@ function doPost(e) {
     }
 
     if (action === "setIntentions") {
+      // Full replace each push (same pattern as setStudents below) — otherwise
+      // subjects removed from today's timetable never disappear from the phone,
+      // since the old merge-only logic never deleted a row.
       const sheet = getOrCreateSheet_(SHEET_INTENTIONS, INTENTIONS_HEADERS);
-      const values = sheet.getDataRange().getValues();
+      sheet.clearContents();
+      sheet.appendRow(INTENTIONS_HEADERS);
       const now = new Date().toISOString();
       Object.keys(payload).forEach(subject => {
         const data = payload[subject];
-        let foundRow = -1;
-        for (let r = 1; r < values.length; r++) {
-          if (values[r][0] === subject) { foundRow = r + 1; break; }
-        }
-        const row = [subject, data.centralIdea || "", data.loi1 || "", data.loi2 || "", data.loi3 || "", data.learningObjective || "", now];
-        if (foundRow > -1) {
-          sheet.getRange(foundRow, 1, 1, row.length).setValues([row]);
-        } else {
-          sheet.appendRow(row);
-        }
+        sheet.appendRow([subject, data.centralIdea || "", data.loi1 || "", data.loi2 || "", data.loi3 || "", data.learningObjective || "", now]);
       });
       return jsonResponse_({ ok: true });
     }
