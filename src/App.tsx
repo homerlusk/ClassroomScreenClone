@@ -443,9 +443,10 @@ function EvidenceList({
 }
 
 function ReportDraftingPanel({
-  students, subjectProfiles, reportData, setReportData, onClose
+  students, setStudents, subjectProfiles, reportData, setReportData, onClose
 }: {
   students: Student[];
+  setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
   subjectProfiles: Record<string, SubjectProfile>;
   reportData: ReportData;
   setReportData: React.Dispatch<React.SetStateAction<ReportData>>;
@@ -456,6 +457,7 @@ function ReportDraftingPanel({
   const [activeTab, setActiveTab] = useState<"literacy" | "maths" | "uoi" | "sel">("literacy");
   const [phoneNotes, setPhoneNotes] = useState<Note[]>([]);
   const [phoneNotesLoading, setPhoneNotesLoading] = useState(false);
+  const [phoneNotesError, setPhoneNotesError] = useState<string>("");
   const [apiUrlInput, setApiUrlInput] = useState<string>(getApiUrl());
   const [editingApiUrl, setEditingApiUrl] = useState<boolean>(!getApiUrl());
   const [notesRefreshTick, setNotesRefreshTick] = useState(0);
@@ -470,12 +472,13 @@ function ReportDraftingPanel({
   // this is the actual evidence captured during lessons, and previously never
   // made it into report drafting at all.
   useEffect(() => {
-    if (!selectedStudent || !getApiUrl()) { setPhoneNotes([]); return; }
+    if (!selectedStudent || !getApiUrl()) { setPhoneNotes([]); setPhoneNotesError(""); return; }
     let cancelled = false;
     setPhoneNotesLoading(true);
+    setPhoneNotesError("");
     fetchNotes(selectedStudent)
       .then((ns) => { if (!cancelled) setPhoneNotes(ns); })
-      .catch(() => { if (!cancelled) setPhoneNotes([]); })
+      .catch((err) => { if (!cancelled) { setPhoneNotes([]); setPhoneNotesError(err instanceof Error ? err.message : "Could not load notes."); } })
       .finally(() => { if (!cancelled) setPhoneNotesLoading(false); });
     return () => { cancelled = true; };
   }, [selectedStudent, notesRefreshTick]);
@@ -671,7 +674,7 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
           <span style={{ fontSize: "12px", color: C.muted }}>Pronouns:</span>
           {(["he", "she", "they"] as const).map(p => (
             <button key={p} onClick={() => {
-              // This would need to update students array — handled via parent
+              setStudents(prev => prev.map(s => s.name === selectedStudent ? { ...s, pronoun: p } : s));
             }}
               style={{ ...btnBase, padding: "3px 10px", fontSize: "11px", borderRadius: "20px",
                 background: pronoun === p ? C.text : C.bg, color: pronoun === p ? "#fff" : C.muted,
@@ -679,7 +682,6 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
               {p}
             </button>
           ))}
-          <span style={{ fontSize: "11px", color: C.muted, marginLeft: "4px" }}>(set in Roster)</span>
         </div>
         <button onClick={exportStudentReport} style={{ ...btnSage, fontSize: "12px", padding: "6px 14px", marginLeft: "auto" }}>
           📥 Export {selectedStudent}'s Report
@@ -706,6 +708,11 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
         </div>
       ) : phoneNotesLoading ? (
         <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>Loading phone notes for {selectedStudent}…</span>
+      ) : phoneNotesError ? (
+        <span style={{ fontSize: "11px", color: C.roseDark, fontStyle: "italic" }}>
+          ⚠️ Couldn't load phone notes: {phoneNotesError}
+          <button onClick={() => setEditingApiUrl(true)} style={linkStyle}>Change API URL</button>
+        </span>
       ) : phoneNotes.length === 0 ? (
         <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
           📱 No phone notes logged yet for {selectedStudent}.
@@ -1528,6 +1535,7 @@ return (
           {!presentationMode && showReportPanel && students.length > 0 && (
             <ReportDraftingPanel
               students={students}
+              setStudents={setStudents}
               subjectProfiles={subjectProfiles}
               reportData={reportData}
               setReportData={setReportData}
