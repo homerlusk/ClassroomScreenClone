@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   getApiUrl, setApiUrl, clearApiUrl, fetchIntentions, fetchStudents, fetchNotes,
-  addNote, type Intention, type Note,
+  fetchActiveSubject, addNote, type Intention, type Note,
 } from "../services/notes";
 
 const RAG_TAGS = [
@@ -64,6 +64,8 @@ export default function Teacher() {
   const [intentions, setIntentions] = useState<Record<string, Intention>>({});
   const [students, setStudents] = useState<{ name: string; present: boolean }[]>([]);
   const [subject, setSubject] = useState<string>("");
+  const [remoteSubject, setRemoteSubject] = useState<string>("");
+  const lastSyncedRemoteRef = useRef<string>("");
   const [selectedStudent, setSelectedStudent] = useState<string>("");
   const [freeText, setFreeText] = useState("");
   const [recentNotes, setRecentNotes] = useState<Note[]>([]);
@@ -77,13 +79,26 @@ export default function Teacher() {
 
   async function refreshAll() {
     try {
-      const [intentionsData, studentsData] = await Promise.all([fetchIntentions(), fetchStudents()]);
+      const [intentionsData, studentsData, activeSubjectData] = await Promise.all([
+        fetchIntentions(),
+        fetchStudents(),
+        fetchActiveSubject().catch(() => ({ subject: "", updatedAt: "" })),
+      ]);
       setIntentions(intentionsData);
       setStudents(studentsData);
-      // Deliberately NOT auto-selecting a subject here. It used to silently default
-      // to whichever subject happened to be first in the sheet — easy to not notice,
-      // and easy to end up logging everything under the wrong subject. Now the
-      // teacher has to consciously tap a subject tab before anything can be saved.
+      setRemoteSubject(activeSubjectData.subject);
+      // Auto-follow the classroom screen, but only when it actually changes to
+      // something new — this way a manual override you made in between polls
+      // isn't silently stomped on every 20-second refresh, only when the
+      // teacher genuinely switches lessons on the big screen.
+      if (
+        activeSubjectData.subject &&
+        activeSubjectData.subject !== lastSyncedRemoteRef.current &&
+        intentionsData[activeSubjectData.subject]
+      ) {
+        lastSyncedRemoteRef.current = activeSubjectData.subject;
+        setSubject(activeSubjectData.subject);
+      }
       setConnected(true);
       setConnectionError("");
     } catch (err) {
@@ -124,7 +139,14 @@ export default function Teacher() {
   }, [currentIntention]);
 
   async function saveObservation(text: string, tag?: string) {
-    if (!selectedStudent || !text.trim()) return;
+    if (!selectedStudent) {
+      setConnectionError("No student selected — tap a student chip above before logging an observation.");
+      return;
+    }
+    if (!text.trim()) {
+      setConnectionError("Nothing to save — type a note or pick a tag with text attached.");
+      return;
+    }
     setSaving(true);
     try {
       const now = new Date();
@@ -213,9 +235,23 @@ export default function Teacher() {
         ))}
       </div>
 
-      {!subject && Object.keys(intentions).length > 0 && (
+      {remoteSubject && intentions[remoteSubject] && (
+        <div style={styles.syncRow}>
+          <span>🖥️ Screen: <b>{intentions[remoteSubject]?.label || remoteSubject}</b></span>
+          {subject !== remoteSubject && (
+            <button
+              onClick={() => { lastSyncedRemoteRef.current = remoteSubject; setSubject(remoteSubject); }}
+              style={styles.syncButton}
+            >
+              ↺ Follow screen
+            </button>
+          )}
+        </div>
+      )}
+
+      {!subject && !remoteSubject && Object.keys(intentions).length > 0 && (
         <div style={styles.subjectPrompt}>
-          👆 Tap a subject above before logging observations — this app doesn't auto-track what's showing on the classroom screen, so pick it every time you switch lessons.
+          👆 Tap a subject above before logging observations — the classroom screen hasn't reported an active lesson yet.
         </div>
       )}
 
@@ -246,52 +282,6 @@ export default function Teacher() {
             {savedFlash ? "✓ Saved" : "\u00A0"}
           </div>
 
-          <div style={styles.ragRow}>
-            {RAG_TAGS.map((t) => {
-              const isJustSaved = lastSavedTag === t.label;
-              return (
-                <button
-                  key={t.label}
-                  disabled={saving}
-                  style={{
-                    ...styles.ragButton,
-                    borderColor: t.color,
-                    color: isJustSaved ? "white" : t.color,
-                    background: isJustSaved ? t.color : "white",
-                    transform: isJustSaved ? "scale(0.96)" : "scale(1)",
-                  }}
-                  onClick={() => saveObservation(t.label, t.label)}
-                >
-                  <span style={{ fontSize: 26 }}>{isJustSaved ? "✓" : t.emoji}</span>
-                  <span>{t.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div style={styles.intentionLabel}>More</div>
-          <div style={styles.quickTagGrid}>
-            {QUICK_TAGS.map((t) => {
-              const isJustSaved = lastSavedTag === t.label;
-              return (
-                <button
-                  key={t.label}
-                  disabled={saving}
-                  style={{
-                    ...styles.quickTagButton,
-                    background: isJustSaved ? "#4e7a60" : "#ebe5d9",
-                    color: isJustSaved ? "white" : "#2c2825",
-                    transform: isJustSaved ? "scale(0.96)" : "scale(1)",
-                  }}
-                  onClick={() => saveObservation(t.label, t.label)}
-                >
-                  <span style={{ fontSize: 22 }}>{isJustSaved ? "✓" : t.emoji}</span>
-                  <span>{t.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
           <div style={styles.freeTextRow}>
             <input
               style={styles.freeTextInput}
@@ -315,6 +305,56 @@ export default function Teacher() {
             >
               Save
             </button>
+          </div>
+
+          <div style={styles.tagHint}>
+            Tap a tag below to attach it to the note above — or tap one alone for a quick log with no note text.
+          </div>
+
+          <div style={styles.ragRow}>
+            {RAG_TAGS.map((t) => {
+              const isJustSaved = lastSavedTag === t.label;
+              return (
+                <button
+                  key={t.label}
+                  disabled={saving}
+                  style={{
+                    ...styles.ragButton,
+                    borderColor: t.color,
+                    color: isJustSaved ? "white" : t.color,
+                    background: isJustSaved ? t.color : "white",
+                    transform: isJustSaved ? "scale(0.96)" : "scale(1)",
+                  }}
+                  onClick={() => saveObservation(freeText.trim() || t.label, t.label)}
+                >
+                  <span style={{ fontSize: 26 }}>{isJustSaved ? "✓" : t.emoji}</span>
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={styles.intentionLabel}>More</div>
+          <div style={styles.quickTagGrid}>
+            {QUICK_TAGS.map((t) => {
+              const isJustSaved = lastSavedTag === t.label;
+              return (
+                <button
+                  key={t.label}
+                  disabled={saving}
+                  style={{
+                    ...styles.quickTagButton,
+                    background: isJustSaved ? "#4e7a60" : "#ebe5d9",
+                    color: isJustSaved ? "white" : "#2c2825",
+                    transform: isJustSaved ? "scale(0.96)" : "scale(1)",
+                  }}
+                  onClick={() => saveObservation(freeText.trim() || t.label, t.label)}
+                >
+                  <span style={{ fontSize: 22 }}>{isJustSaved ? "✓" : t.emoji}</span>
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
           </div>
 
           {recentNotes.length > 0 && (
@@ -348,6 +388,9 @@ const styles: Record<string, React.CSSProperties> = {
   tabActive: { background: "#4e7a60", color: "white", borderColor: "#4e7a60" },
   intentionBanner: { background: "#e8e0cf", borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 14 },
   subjectPrompt: { background: "#f6e6c9", border: "1.5px solid #c99a2e", borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13.5, fontWeight: 600, color: "#5a4415" },
+  syncRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: "#eef1ea", borderRadius: 8, padding: "6px 10px", marginBottom: 12, fontSize: 12.5, color: "#4a5a4e" },
+  syncButton: { background: "#4e7a60", color: "white", border: "none", borderRadius: 8, padding: "4px 10px", fontSize: 11.5, fontWeight: 600, cursor: "pointer" },
+  tagHint: { fontSize: 11.5, color: "#7a7068", fontStyle: "italic", marginBottom: 8, textAlign: "center" },
   intentionLabel: { fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#7a7068", marginBottom: 4 },
   studentGrid: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 },
   studentChip: { padding: "10px 14px", borderRadius: 20, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer" },

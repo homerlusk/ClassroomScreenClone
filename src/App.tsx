@@ -465,6 +465,7 @@ function ReportDraftingPanel({
   const [editingKey, setEditingKey] = useState<boolean>(() => !localStorage.getItem("geminiApiKey"));
   const [keyInput, setKeyInput] = useState<string>(() => localStorage.getItem("geminiApiKey") || "");
   const [draftError, setDraftError] = useState<string>("");
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; label: string } | null>(null);
 
   function saveGeminiKey() {
     const trimmed = keyInput.trim();
@@ -512,25 +513,42 @@ function ReportDraftingPanel({
     return reportData.studentReports[selectedStudent];
   };
 
-  const updateReport = (section: string, field: string, value: string, unitIdx?: number) => {
-    const current = getStudentReport();
-    setReportData(prev => ({
-      ...prev,
-      studentReports: {
-        ...prev.studentReports,
-        [selectedStudent]: {
-          ...current,
-          [section]: section === "uoi" && field === "unitDraft" && unitIdx !== undefined
-            ? { ...current.uoi, unitDrafts: current.uoi.unitDrafts.map((d, i) => i === unitIdx ? value : d) }
-            : { ...(current as any)[section], [field]: value }
+  const updateReportFor = (studentName: string, section: string, field: string, value: string, unitIdx?: number) => {
+    setReportData(prev => {
+      const current = prev.studentReports[studentName] || {
+        literacy: { draft: "", growth1: "", growth2: "", achievement: "ME" },
+        maths: { draft: "", growth1: "", growth2: "", achievement: "ME" },
+        uoi: { unitDrafts: ["", "", ""], growth1: "", growth2: "", achievement: "ME" },
+        sel: { draft: "", growth1: "", growth2: "", achievement: "ME" },
+      };
+      return {
+        ...prev,
+        studentReports: {
+          ...prev.studentReports,
+          [studentName]: {
+            ...current,
+            [section]: section === "uoi" && field === "unitDraft" && unitIdx !== undefined
+              ? { ...current.uoi, unitDrafts: current.uoi.unitDrafts.map((d, i) => i === unitIdx ? value : d) }
+              : { ...(current as any)[section], [field]: value }
+          }
         }
-      }
-    }));
+      };
+    });
   };
 
-  const buildObsSummary = (subjectId: string) => {
+  const updateReport = (section: string, field: string, value: string, unitIdx?: number) =>
+    updateReportFor(selectedStudent, section, field, value, unitIdx);
+
+  function pronounsFor(name: string): { pronoun: "he" | "she" | "they"; possessive: string } {
+    const s = students.find(x => x.name === name);
+    const p = s?.pronoun || "they";
+    return { pronoun: p, possessive: p === "he" ? "his" : p === "she" ? "her" : "their" };
+  }
+  const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+  const buildObsSummaryFor = (studentName: string, subjectId: string, notesForStudent: Note[]) => {
     const profile = subjectProfiles[subjectId];
-    const obs = profile?.observations?.[selectedStudent];
+    const obs = profile?.observations?.[studentName];
     const localPart = obs
       ? (() => {
           const status = obs.status === "green" ? "Mastered" : obs.status === "amber" ? "Progressing" : obs.status === "red" ? "Needs support" : "Not tracked";
@@ -540,7 +558,7 @@ function ReportDraftingPanel({
           return `Status: ${status}. ATL skills: ${atls}. ${star ? `Star moment: ${star}.` : ""} Notes: ${notesTxt || "None."}`;
         })()
       : "";
-    const relevantPhoneNotes = phoneNotes.filter(n => n.subject === subjectId);
+    const relevantPhoneNotes = notesForStudent.filter(n => n.subject === subjectId);
     const phonePart = relevantPhoneNotes.length
       ? `Logged classroom observations (${relevantPhoneNotes.length}): ` +
         relevantPhoneNotes.map(n => `[${n.date}${n.tags ? ` · ${n.tags}` : ""}] ${n.text}`).join(" || ")
@@ -548,6 +566,8 @@ function ReportDraftingPanel({
     const combined = [localPart, phonePart].filter(Boolean).join(" ");
     return combined || "No observations recorded.";
   };
+
+  const buildObsSummary = (subjectId: string) => buildObsSummaryFor(selectedStudent, subjectId, phoneNotes);
 
   async function callGemini(prompt: string): Promise<string> {
     if (!geminiKey) throw new Error("Add your Gemini API key above first.");
@@ -573,46 +593,66 @@ function ReportDraftingPanel({
     return text.trim();
   }
 
-  const generateDraft = async (section: "literacy" | "maths" | "sel", unitIdx?: number) => {
-    const key = unitIdx !== undefined ? `uoi_${unitIdx}` : section;
-    setGenerating(g => ({ ...g, [key]: true }));
-
+  async function generateDraftFor(studentName: string, notesForStudent: Note[], section: "literacy" | "maths" | "sel", unitIdx?: number) {
+    const { pronoun: p, possessive: pos } = pronounsFor(studentName);
     let prompt = "";
-    const name = selectedStudent;
 
     if (section === "literacy") {
-      const obs = buildObsSummary("literacy");
-      const spellingObs = buildObsSummary("spelling");
-      prompt = `You are writing a Grade 5 IB PYP end-of-term Literacy report comment for a 10-year-old student named ${name}. Use ${pronoun}/${possessive} pronouns. 
+      const obs = buildObsSummaryFor(studentName, "literacy", notesForStudent);
+      const spellingObs = buildObsSummaryFor(studentName, "spelling", notesForStudent);
+      prompt = `You are writing a Grade 5 IB PYP end-of-term Literacy report comment for a 10-year-old student named ${studentName}. Use ${p}/${pos} pronouns. 
 
 Teacher observations: ${obs}
 Spelling observations: ${spellingObs}
 
 Write approximately 150 words in warm, professional PYP report language. Cover reading, writing, and oral communication skills. Be specific and evidence-based. Do not use generic filler. Do not include growth areas in this section — those are separate. Write in third person. Start with the student's name.`;
     } else if (section === "maths") {
-      const obs = buildObsSummary("maths");
-      prompt = `You are writing a Grade 5 IB PYP end-of-term Mathematics report comment for a 10-year-old student named ${name}. Use ${pronoun}/${possessive} pronouns.
+      const obs = buildObsSummaryFor(studentName, "maths", notesForStudent);
+      prompt = `You are writing a Grade 5 IB PYP end-of-term Mathematics report comment for a 10-year-old student named ${studentName}. Use ${p}/${pos} pronouns.
 
 Teacher observations: ${obs}
 
 Write approximately 150 words in warm, professional PYP report language. Reference conceptual understanding, skills application, and mathematical thinking. Be specific. Do not include growth areas. Write in third person. Start with the student's name.`;
     } else if (section === "sel") {
-      const allObs = ["literacy", "maths", "uoi"].map(id => buildObsSummary(id)).join(" | ");
-      prompt = `You are writing a Grade 5 IB PYP end-of-term Social Emotional Learning report comment for a 10-year-old student named ${name}. Use ${pronoun}/${possessive} pronouns.
+      const allObs = ["literacy", "maths", "uoi"].map(id => buildObsSummaryFor(studentName, id, notesForStudent)).join(" | ");
+      prompt = `You are writing a Grade 5 IB PYP end-of-term Social Emotional Learning report comment for a 10-year-old student named ${studentName}. Use ${p}/${pos} pronouns.
 
 This section is based on ATL (Approaches to Learning) skills and classroom interactions.
 Cross-subject observations: ${allObs}
 
-Write approximately 150 words covering how the student manages ${possessive} learning, collaborates with peers, communicates, and contributes to the classroom community. Use warm, professional PYP language. Do not include growth areas. Write in third person. Start with the student's name.`;
+Write approximately 150 words covering how the student manages ${pos} learning, collaborates with peers, communicates, and contributes to the classroom community. Use warm, professional PYP language. Do not include growth areas. Write in third person. Start with the student's name.`;
     }
 
+    const text = await callGemini(prompt);
+    if (unitIdx !== undefined) {
+      updateReportFor(studentName, "uoi", "unitDraft", text, unitIdx);
+    } else {
+      updateReportFor(studentName, section, "draft", text);
+    }
+  }
+
+  async function generateUoiDraftFor(studentName: string, notesForStudent: Note[], unitIdx: number) {
+    const { pronoun: p, possessive: pos } = pronounsFor(studentName);
+    const unit = reportData.units[unitIdx];
+    const obs = buildObsSummaryFor(studentName, "uoi", notesForStudent);
+    const prompt = `You are writing a Grade 5 IB PYP end-of-term Unit of Inquiry report comment for a 10-year-old student named ${studentName}. Use ${p}/${pos} pronouns.
+
+Unit title: ${unit?.title || "Unit " + (unitIdx + 1)}
+Central idea: ${unit?.centralIdea || "Not specified"}
+Lines of inquiry: ${[unit?.loi1, unit?.loi2, unit?.loi3].filter(Boolean).join("; ") || "Not specified"}
+
+Teacher observations: ${obs}
+
+Write approximately 150 words in warm, professional PYP language. Reference the central idea and lines of inquiry. Be specific about what the student understood, inquired into, and demonstrated. Do not include growth areas. Write in third person. Start with the student's name.`;
+    const text = await callGemini(prompt);
+    updateReportFor(studentName, "uoi", "unitDraft", text, unitIdx);
+  }
+
+  const generateDraft = async (section: "literacy" | "maths" | "sel", unitIdx?: number) => {
+    const key = unitIdx !== undefined ? `uoi_${unitIdx}` : section;
+    setGenerating(g => ({ ...g, [key]: true }));
     try {
-      const text = await callGemini(prompt);
-      if (unitIdx !== undefined) {
-        updateReport("uoi", "unitDraft", text, unitIdx);
-      } else {
-        updateReport(section, "draft", text);
-      }
+      await generateDraftFor(selectedStudent, phoneNotes, section, unitIdx);
       setDraftError("");
     } catch (e) {
       console.error("API error", e);
@@ -624,28 +664,73 @@ Write approximately 150 words covering how the student manages ${possessive} lea
   const generateUoiDraft = async (unitIdx: number) => {
     const key = `uoi_${unitIdx}`;
     setGenerating(g => ({ ...g, [key]: true }));
-    const unit = reportData.units[unitIdx];
-    const obs = buildObsSummary("uoi");
-    const name = selectedStudent;
-    const prompt = `You are writing a Grade 5 IB PYP end-of-term Unit of Inquiry report comment for a 10-year-old student named ${name}. Use ${pronoun}/${possessive} pronouns.
-
-Unit title: ${unit?.title || "Unit " + (unitIdx + 1)}
-Central idea: ${unit?.centralIdea || "Not specified"}
-Lines of inquiry: ${[unit?.loi1, unit?.loi2, unit?.loi3].filter(Boolean).join("; ") || "Not specified"}
-
-Teacher observations: ${obs}
-
-Write approximately 150 words in warm, professional PYP language. Reference the central idea and lines of inquiry. Be specific about what the student understood, inquired into, and demonstrated. Do not include growth areas. Write in third person. Start with the student's name.`;
-
     try {
-      const text = await callGemini(prompt);
-      updateReport("uoi", "unitDraft", text, unitIdx);
+      await generateUoiDraftFor(selectedStudent, phoneNotes, unitIdx);
       setDraftError("");
     } catch (e) {
       console.error("API error", e);
       setDraftError(e instanceof Error ? e.message : "Something went wrong generating the draft.");
     }
     setGenerating(g => ({ ...g, [key]: false }));
+  };
+
+  // ── BATCH GENERATION ──
+  // Sequential (not parallel) with a short pause between calls, since the free
+  // Gemini tier has real per-minute limits — bursting requests just trades one
+  // rate-limit error for another. Each item's failure is collected rather than
+  // stopping the whole batch, so one bad note doesn't block the rest of the class.
+  const generateAllSectionsForStudent = async (studentName: string) => {
+    if (!geminiKey) { setDraftError("Add your Gemini API key above first."); return; }
+    setGenerating(g => ({ ...g, batch_student: true }));
+    setDraftError("");
+    let notesForStudent: Note[] = studentName === selectedStudent ? phoneNotes : [];
+    if (studentName !== selectedStudent && getApiUrl()) {
+      try { notesForStudent = await fetchNotes(studentName); } catch { notesForStudent = []; }
+    }
+    const tasks: { label: string; run: () => Promise<void> }[] = [
+      { label: "Literacy", run: () => generateDraftFor(studentName, notesForStudent, "literacy") },
+      { label: "Maths", run: () => generateDraftFor(studentName, notesForStudent, "maths") },
+      { label: "SEL", run: () => generateDraftFor(studentName, notesForStudent, "sel") },
+      { label: "UOI Unit 1", run: () => generateUoiDraftFor(studentName, notesForStudent, 0) },
+      { label: "UOI Unit 2", run: () => generateUoiDraftFor(studentName, notesForStudent, 1) },
+      { label: "UOI Unit 3", run: () => generateUoiDraftFor(studentName, notesForStudent, 2) },
+    ];
+    const errors: string[] = [];
+    for (let i = 0; i < tasks.length; i++) {
+      setBatchProgress({ current: i + 1, total: tasks.length, label: `${studentName} — ${tasks[i].label}` });
+      try {
+        await tasks[i].run();
+      } catch (e) {
+        errors.push(`${tasks[i].label}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+      if (i < tasks.length - 1) await sleep(900);
+    }
+    setBatchProgress(null);
+    setGenerating(g => ({ ...g, batch_student: false }));
+    if (errors.length) setDraftError(`Some sections failed: ${errors.join(" | ")}`);
+  };
+
+  const generateSubjectForWholeClass = async (subjectId: "literacy" | "maths" | "sel") => {
+    if (!geminiKey) { setDraftError("Add your Gemini API key above first."); return; }
+    if (students.length === 0) { setDraftError("No students in roster."); return; }
+    const gKey = `batch_${subjectId}`;
+    setGenerating(g => ({ ...g, [gKey]: true }));
+    setDraftError("");
+    const errors: string[] = [];
+    for (let i = 0; i < students.length; i++) {
+      const name = students[i].name;
+      setBatchProgress({ current: i + 1, total: students.length, label: `${name} — ${subjectId}` });
+      try {
+        const notesForStudent = name === selectedStudent ? phoneNotes : (getApiUrl() ? await fetchNotes(name) : []);
+        await generateDraftFor(name, notesForStudent, subjectId);
+      } catch (e) {
+        errors.push(`${name}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+      if (i < students.length - 1) await sleep(900);
+    }
+    setBatchProgress(null);
+    setGenerating(g => ({ ...g, [gKey]: false }));
+    if (errors.length) setDraftError(`${errors.length} of ${students.length} failed: ${errors.join(" | ")}`);
   };
 
   // Free alternative to AI generation — just formats the raw phone notes into
@@ -681,6 +766,40 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
     setDraftError("");
   };
 
+  // Suggests two growth areas using ONLY the notes flagged NS (not secure) or
+  // AE (approaching expectation) for this subject — i.e. the notes that
+  // actually indicate something to work on, rather than the whole note set.
+  const generateGrowthAreas = async (sectionKey: "literacy" | "maths" | "uoi" | "sel") => {
+    const gKey = `growth_${sectionKey}`;
+    setGenerating(g => ({ ...g, [gKey]: true }));
+    const subjectIds = sectionKey === "sel" ? ["literacy", "maths", "uoi"] : [sectionKey];
+    const relevant = phoneNotes.filter(
+      n => subjectIds.includes(n.subject) && (n.tags?.split(",").includes("NS") || n.tags?.split(",").includes("AE"))
+    );
+    if (relevant.length === 0) {
+      setDraftError(`No notes tagged "NS" or "AE" found for ${sectionKey === "sel" ? "SEL" : sectionKey} yet — growth areas need at least one note flagged as needing support or still approaching.`);
+      setGenerating(g => ({ ...g, [gKey]: false }));
+      return;
+    }
+    const notesText = relevant.map(n => `[${n.date} · ${n.tags}] ${n.text}`).join("\n");
+    const prompt = `You are identifying two areas for growth for a Grade 5 IB PYP student named ${selectedStudent} in ${sectionKey === "sel" ? "Social Emotional Learning" : sectionKey}, based ONLY on these logged classroom observations that were flagged as needing support (NS) or still approaching expectations (AE):
+
+${notesText}
+
+Write exactly two short, specific, actionable growth areas (each under 15 words), based only on what these notes actually show — do not invent anything the notes don't support. Respond with ONLY the two growth areas, one per line, no numbering, no extra commentary.`;
+    try {
+      const text = await callGemini(prompt);
+      const lines = text.split("\n").map(l => l.replace(/^[-•\d.\s]+/, "").trim()).filter(Boolean);
+      updateReport(sectionKey, "growth1", lines[0] || "");
+      updateReport(sectionKey, "growth2", lines[1] || "");
+      setDraftError("");
+    } catch (e) {
+      console.error("API error", e);
+      setDraftError(e instanceof Error ? e.message : "Something went wrong suggesting growth areas.");
+    }
+    setGenerating(g => ({ ...g, [gKey]: false }));
+  };
+
   const report = getStudentReport();
   const notedSubjects = useMemo(
     () => Array.from(new Set(phoneNotes.map(n => n.subject).filter(Boolean))),
@@ -695,6 +814,22 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
     { key: "uoi" as const, label: "🔍 UOI" },
     { key: "sel" as const, label: "🤝 SEL" },
   ];
+
+  // Suggests an achievement level from whichever RAG tag (EE/ME/AE/NS) shows up
+  // most often among a subject's phone notes. Never applied automatically —
+  // the teacher clicks to accept it, same as everything else in this panel.
+  function suggestAchievement(subjectId: string): string | null {
+    const relevant = subjectId === "sel" ? phoneNotes : phoneNotes.filter(n => n.subject === subjectId);
+    const counts: Record<string, number> = {};
+    relevant.forEach(n => {
+      const tag = ACHIEVEMENTS.find(a => n.tags === a || n.tags?.split(",").includes(a));
+      if (tag) counts[tag] = (counts[tag] || 0) + 1;
+    });
+    const entries = Object.entries(counts);
+    if (entries.length === 0) return null;
+    entries.sort((a, b) => b[1] - a[1]);
+    return entries[0][0];
+  }
 
   const exportStudentReport = () => {
     let text = `REPORT DRAFT: ${selectedStudent}\nGenerated: ${new Date().toLocaleDateString()}\n`;
@@ -741,10 +876,23 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
             </button>
           ))}
         </div>
-        <button onClick={exportStudentReport} style={{ ...btnSage, fontSize: "12px", padding: "6px 14px", marginLeft: "auto" }}>
+        <button onClick={() => generateAllSectionsForStudent(selectedStudent)} disabled={!!generating.batch_student || !!batchProgress}
+          style={{ ...btnSlate, fontSize: "12px", padding: "6px 14px", marginLeft: "auto" }}>
+          {generating.batch_student ? "✨ Generating all..." : `✨ Generate All Sections for ${selectedStudent}`}
+        </button>
+        <button onClick={exportStudentReport} style={{ ...btnSage, fontSize: "12px", padding: "6px 14px" }}>
           📥 Export {selectedStudent}'s Report
         </button>
       </div>
+
+      {batchProgress && (
+        <div style={{ background: C.highlight, borderRadius: "10px", padding: "8px 12px", fontSize: "12px", color: C.text, display: "flex", alignItems: "center", gap: "10px" }}>
+          <span>⏳ Generating {batchProgress.current} of {batchProgress.total}: {batchProgress.label}</span>
+          <div style={{ flex: 1, height: "6px", background: C.bg, borderRadius: "4px", overflow: "hidden" }}>
+            <div style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%`, height: "100%", background: C.sageDark, transition: "width 0.3s ease" }} />
+          </div>
+        </div>
+      )}
 
       {editingApiUrl ? (
         <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", background: C.highlight, borderRadius: "10px", padding: "8px 10px" }}>
@@ -844,6 +992,12 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
                   color: report.literacy.achievement === a ? "#fff" : C.text,
                   border: `1px solid ${C.cardBorder}` }}>{a}</button>
             ))}
+            {suggestAchievement("literacy") && (
+              <button onClick={() => updateReport("literacy", "achievement", suggestAchievement("literacy")!)}
+                style={{ ...btnGhost, padding: "4px 10px", fontSize: "11px" }}>
+                💡 Suggest: {suggestAchievement("literacy")}
+              </button>
+            )}
             <button onClick={() => compileFromNotes("literacy")}
               style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px", marginLeft: "auto" }}>
               📋 Compile from Notes (free)
@@ -851,6 +1005,10 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
             <button onClick={() => generateDraft("literacy")} disabled={generating.literacy}
               style={{ ...btnSage, padding: "6px 16px", fontSize: "13px" }}>
               {generating.literacy ? "✨ Generating..." : "✨ Generate Draft"}
+            </button>
+            <button onClick={() => generateSubjectForWholeClass("literacy")} disabled={!!generating.batch_literacy || !!batchProgress}
+              style={{ ...btnSlate, padding: "6px 14px", fontSize: "12px" }}>
+              {generating.batch_literacy ? "✨ Generating class..." : "✨ Generate for Whole Class"}
             </button>
           </div>
           <EvidenceList
@@ -860,6 +1018,12 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
           <textarea value={report.literacy.draft} onChange={e => updateReport("literacy", "draft", e.target.value)}
             placeholder="Click 'Generate Draft' or type directly..."
             style={{ ...inputStyle, minHeight: "160px", resize: "vertical", fontSize: "14px", lineHeight: 1.7 }} />
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={() => generateGrowthAreas("literacy")} disabled={generating.growth_literacy}
+              style={{ ...btnGhost, padding: "4px 12px", fontSize: "11px" }}>
+              {generating.growth_literacy ? "✨ Thinking..." : "✨ Suggest Growth Areas (from NS/AE notes)"}
+            </button>
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
             <div>
               <span style={{ ...labelStyle, fontSize: "10px" }}>Growth Area 1</span>
@@ -889,6 +1053,12 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
                   color: report.maths.achievement === a ? "#fff" : C.text,
                   border: `1px solid ${C.cardBorder}` }}>{a}</button>
             ))}
+            {suggestAchievement("maths") && (
+              <button onClick={() => updateReport("maths", "achievement", suggestAchievement("maths")!)}
+                style={{ ...btnGhost, padding: "4px 10px", fontSize: "11px" }}>
+                💡 Suggest: {suggestAchievement("maths")}
+              </button>
+            )}
             <button onClick={() => compileFromNotes("maths")}
               style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px", marginLeft: "auto" }}>
               📋 Compile from Notes (free)
@@ -896,6 +1066,10 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
             <button onClick={() => generateDraft("maths")} disabled={generating.maths}
               style={{ ...btnSage, padding: "6px 16px", fontSize: "13px" }}>
               {generating.maths ? "✨ Generating..." : "✨ Generate Draft"}
+            </button>
+            <button onClick={() => generateSubjectForWholeClass("maths")} disabled={!!generating.batch_maths || !!batchProgress}
+              style={{ ...btnSlate, padding: "6px 14px", fontSize: "12px" }}>
+              {generating.batch_maths ? "✨ Generating class..." : "✨ Generate for Whole Class"}
             </button>
           </div>
           <EvidenceList
@@ -905,6 +1079,12 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
           <textarea value={report.maths.draft} onChange={e => updateReport("maths", "draft", e.target.value)}
             placeholder="Click 'Generate Draft' or type directly..."
             style={{ ...inputStyle, minHeight: "160px", resize: "vertical", fontSize: "14px", lineHeight: 1.7 }} />
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={() => generateGrowthAreas("maths")} disabled={generating.growth_maths}
+              style={{ ...btnGhost, padding: "4px 12px", fontSize: "11px" }}>
+              {generating.growth_maths ? "✨ Thinking..." : "✨ Suggest Growth Areas (from NS/AE notes)"}
+            </button>
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
             <div>
               <span style={{ ...labelStyle, fontSize: "10px" }}>Growth Area 1</span>
@@ -934,6 +1114,12 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
                   color: report.uoi.achievement === a ? "#fff" : C.text,
                   border: `1px solid ${C.cardBorder}` }}>{a}</button>
             ))}
+            {suggestAchievement("uoi") && (
+              <button onClick={() => updateReport("uoi", "achievement", suggestAchievement("uoi")!)}
+                style={{ ...btnGhost, padding: "4px 10px", fontSize: "11px" }}>
+                💡 Suggest: {suggestAchievement("uoi")}
+              </button>
+            )}
           </div>
           {[0, 1, 2].map(i => (
             <div key={i} style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", background: C.highlight, borderRadius: "12px" }}>
@@ -974,6 +1160,12 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
               />
             </div>
           ))}
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={() => generateGrowthAreas("uoi")} disabled={generating.growth_uoi}
+              style={{ ...btnGhost, padding: "4px 12px", fontSize: "11px" }}>
+              {generating.growth_uoi ? "✨ Thinking..." : "✨ Suggest Growth Areas (from NS/AE notes)"}
+            </button>
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
             <div>
               <span style={{ ...labelStyle, fontSize: "10px" }}>Overall Growth Area 1</span>
@@ -1003,6 +1195,12 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
                   color: report.sel.achievement === a ? "#fff" : C.text,
                   border: `1px solid ${C.cardBorder}` }}>{a}</button>
             ))}
+            {suggestAchievement("sel") && (
+              <button onClick={() => updateReport("sel", "achievement", suggestAchievement("sel")!)}
+                style={{ ...btnGhost, padding: "4px 10px", fontSize: "11px" }}>
+                💡 Suggest: {suggestAchievement("sel")}
+              </button>
+            )}
             <button onClick={() => compileFromNotes("sel")}
               style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px", marginLeft: "auto" }}>
               📋 Compile from Notes (free)
@@ -1010,6 +1208,10 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
             <button onClick={() => generateDraft("sel")} disabled={generating.sel}
               style={{ ...btnSage, padding: "6px 16px", fontSize: "13px" }}>
               {generating.sel ? "✨ Generating..." : "✨ Generate Draft"}
+            </button>
+            <button onClick={() => generateSubjectForWholeClass("sel")} disabled={!!generating.batch_sel || !!batchProgress}
+              style={{ ...btnSlate, padding: "6px 14px", fontSize: "12px" }}>
+              {generating.batch_sel ? "✨ Generating class..." : "✨ Generate for Whole Class"}
             </button>
           </div>
           <EvidenceList
@@ -1020,6 +1222,12 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
           <textarea value={report.sel.draft} onChange={e => updateReport("sel", "draft", e.target.value)}
             placeholder="Click 'Generate Draft' or type directly. Based on ATL skills and classroom interactions."
             style={{ ...inputStyle, minHeight: "160px", resize: "vertical", fontSize: "14px", lineHeight: 1.7 }} />
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={() => generateGrowthAreas("sel")} disabled={generating.growth_sel}
+              style={{ ...btnGhost, padding: "4px 12px", fontSize: "11px" }}>
+              {generating.growth_sel ? "✨ Thinking..." : "✨ Suggest Growth Areas (from NS/AE notes)"}
+            </button>
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
             <div>
               <span style={{ ...labelStyle, fontSize: "10px" }}>Growth Area 1</span>
