@@ -547,7 +547,7 @@ function ReportDraftingPanel({
   }
   const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-  const buildObsSummaryFor = (studentName: string, subjectId: string, notesForStudent: Note[]) => {
+  const buildObsSummaryFor = (studentName: string, subjectId: string, notesForStudent: Note[], unitCentralIdea?: string) => {
     const profile = subjectProfiles[subjectId];
     const obs = profile?.observations?.[studentName];
     const localPart = obs
@@ -559,7 +559,9 @@ function ReportDraftingPanel({
           return `Status: ${status}. ATL skills: ${atls}. ${star ? `Star moment: ${star}.` : ""} Notes: ${notesTxt || "None."}`;
         })()
       : "";
-    const relevantPhoneNotes = notesForStudent.filter(n => n.subject === subjectId);
+    const relevantPhoneNotes = notesForStudent.filter(
+      n => n.subject === subjectId && (unitCentralIdea === undefined || n.unitTitle === unitCentralIdea)
+    );
     const phonePart = relevantPhoneNotes.length
       ? `Logged classroom observations (${relevantPhoneNotes.length}): ` +
         relevantPhoneNotes.map(n => `[${n.date}${n.tags ? ` · ${n.tags}` : ""}] ${n.text}`).join(" || ")
@@ -635,7 +637,7 @@ Write approximately 150 words covering how the student manages ${pos} learning, 
   async function generateUoiDraftFor(studentName: string, notesForStudent: Note[], unitIdx: number) {
     const { pronoun: p, possessive: pos } = pronounsFor(studentName);
     const unit = reportData.units[unitIdx];
-    const obs = buildObsSummaryFor(studentName, "uoi", notesForStudent);
+    const obs = buildObsSummaryFor(studentName, "uoi", notesForStudent, unit?.centralIdea);
     const prompt = `You are writing a Grade 5 IB PYP end-of-term Unit of Inquiry report comment for a 10-year-old student named ${studentName}. Use ${p}/${pos} pronouns.
 
 Unit title: ${unit?.title || "Unit " + (unitIdx + 1)}
@@ -753,9 +755,14 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
   };
 
   const compileUoiFromNotes = (unitIdx: number) => {
-    const relevant = phoneNotes.filter(n => n.subject === "uoi");
+    const unitCentralIdea = reportData.units[unitIdx]?.centralIdea;
+    if (!unitCentralIdea?.trim()) {
+      setDraftError(`Set this unit's Central Idea first (type it or "Load preset...") — notes are matched to units by central idea.`);
+      return;
+    }
+    const relevant = phoneNotes.filter(n => n.subject === "uoi" && n.unitTitle === unitCentralIdea);
     if (relevant.length === 0) {
-      setDraftError(`No phone notes tagged "uoi" to compile yet.`);
+      setDraftError(`No phone notes found matching this unit's central idea yet.`);
       return;
     }
     const lines = relevant
@@ -1171,10 +1178,16 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
               <textarea value={report.uoi.unitDrafts[i] || ""} onChange={e => updateReport("uoi", "unitDraft", e.target.value, i)}
                 placeholder="Generate or type draft for this unit..."
                 style={{ ...inputStyle, minHeight: "120px", resize: "vertical", fontSize: "13px", lineHeight: 1.7 }} />
-              <EvidenceList
-                notes={phoneNotes.filter(n => n.subject === "uoi")}
-                onInsert={(text) => updateReport("uoi", "unitDraft", report.uoi.unitDrafts[i] ? `${report.uoi.unitDrafts[i]}\n${text}` : text, i)}
-              />
+              {reportData.units[i]?.centralIdea?.trim() ? (
+                <EvidenceList
+                  notes={phoneNotes.filter(n => n.subject === "uoi" && n.unitTitle === reportData.units[i]?.centralIdea)}
+                  onInsert={(text) => updateReport("uoi", "unitDraft", report.uoi.unitDrafts[i] ? `${report.uoi.unitDrafts[i]}\n${text}` : text, i)}
+                />
+              ) : (
+                <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
+                  Set this unit's Central Idea (or "Load preset...") to match phone notes to it.
+                </span>
+              )}
             </div>
           ))}
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
