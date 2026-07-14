@@ -17,7 +17,86 @@ const QUICK_TAGS = [
   { emoji: "💬", label: "Explained thinking" },
   { emoji: "📚", label: "Excellent effort" },
   { emoji: "💫", label: "Reflective" },
+  { emoji: "👥", label: "Contributes to the team" },
 ];
+
+// Quick-pick reasons shown after tapping a grade, so most observations need a
+// tap instead of typing. "default" applies to any subject without its own
+// entry below — add more subject-specific banks here the same way "maths" is.
+const REASON_OPTIONS: Record<string, Record<string, string[]>> = {
+  default: {
+    NS: [
+      "Doesn't grasp the concept yet",
+      "Confused by the instructions",
+      "Needs one-on-one support",
+      "Not engaging with the task",
+      "Struggling to focus",
+      "Not contributing to group work",
+    ],
+    AE: [
+      "Understands with support only",
+      "Inconsistent — right sometimes, not others",
+      "Needs more practice to solidify",
+      "Hesitant to try independently",
+      "Partial understanding of the concept",
+      "Improving, but not yet reliable",
+    ],
+    ME: [
+      "Solid, accurate understanding",
+      "Works well independently",
+      "Applies the concept correctly",
+      "Collaborates well with peers",
+      "Consistent effort",
+      "Positive, engaged attitude",
+    ],
+    EE: [
+      "Deep, flexible understanding",
+      "Helps or mentors other students",
+      "Applies the concept in new situations",
+      "Shows initiative beyond the task",
+      "Highly independent",
+      "Overconfident — may skip steps or rush",
+    ],
+  },
+  maths: {
+    NS: [
+      "Doesn't understand the operation",
+      "Struggles with number facts",
+      "Can't apply the strategy independently",
+      "Confuses similar operations (e.g. + and −)",
+      "Struggles to explain reasoning",
+      "Careless calculation errors",
+    ],
+    AE: [
+      "Right process, wrong answer",
+      "Needs manipulatives or visual support",
+      "Inconsistent with multi-step problems",
+      "Can solve with prompting only",
+      "Understands but slow to apply",
+      "Mixes up steps in the method",
+    ],
+    ME: [
+      "Solves accurately and independently",
+      "Applies the correct strategy",
+      "Explains reasoning clearly",
+      "Checks own work",
+      "Solves multi-step problems reliably",
+      "Uses efficient strategies",
+    ],
+    EE: [
+      "Solves in multiple ways",
+      "Explains reasoning to others",
+      "Applies concept to real-world problems",
+      "Extends beyond the task independently",
+      "Spots patterns and makes connections",
+      "Moves quickly — check depth over speed",
+    ],
+  },
+};
+
+function reasonsFor(subject: string, grade: string): string[] {
+  return REASON_OPTIONS[subject]?.[grade] || REASON_OPTIONS.default[grade] || [];
+}
 
 function isoWeek(date: Date): string {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -72,6 +151,12 @@ export default function Teacher() {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [lastSavedTag, setLastSavedTag] = useState<string | null>(null);
+  // Which grade's reason picker is currently expanded (null = none open).
+  const [expandedGrade, setExpandedGrade] = useState<string | null>(null);
+  // Which reason chip was just picked, kept visible briefly so the save is
+  // unmistakable before the panel closes — closing instantly made it unclear
+  // whether the tap actually registered.
+  const [justSavedReason, setJustSavedReason] = useState<string | null>(null);
 
   const { start: startListening, listening, supported: micSupported } = useSpeechToText(
     (text) => setFreeText((prev) => (prev ? `${prev} ${text}` : text))
@@ -87,10 +172,6 @@ export default function Teacher() {
       setIntentions(intentionsData);
       setStudents(studentsData);
       setRemoteSubject(activeSubjectData.subject);
-      // Auto-follow the classroom screen, but only when it actually changes to
-      // something new — this way a manual override you made in between polls
-      // isn't silently stomped on every 20-second refresh, only when the
-      // teacher genuinely switches lessons on the big screen.
       if (
         activeSubjectData.subject &&
         activeSubjectData.subject !== lastSyncedRemoteRef.current &&
@@ -129,6 +210,10 @@ export default function Teacher() {
       }).catch(() => {});
     }
   }, [selectedStudent, savedFlash]);
+
+  useEffect(() => {
+    setExpandedGrade(null);
+  }, [selectedStudent, subject]);
 
   const currentIntention = intentions[subject];
 
@@ -172,6 +257,18 @@ export default function Teacher() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function pickReason(reasonText: string) {
+    const grade = expandedGrade;
+    if (!grade) return;
+    const combined = freeText.trim() ? `${freeText.trim()} — ${reasonText}` : reasonText;
+    saveObservation(combined, grade);
+    setJustSavedReason(reasonText);
+    setTimeout(() => {
+      setExpandedGrade(null);
+      setJustSavedReason(null);
+    }, 900);
   }
 
   if (!connected) {
@@ -308,12 +405,13 @@ export default function Teacher() {
           </div>
 
           <div style={styles.tagHint}>
-            Tap a tag below to attach it to the note above — or tap one alone for a quick log with no note text.
+            Tap a grade below to pick a quick reason — or add your own note above first, then tap a grade to attach it.
           </div>
 
           <div style={styles.ragRow}>
             {RAG_TAGS.map((t) => {
               const isJustSaved = lastSavedTag === t.label;
+              const isExpanded = expandedGrade === t.label;
               return (
                 <button
                   key={t.label}
@@ -322,10 +420,11 @@ export default function Teacher() {
                     ...styles.ragButton,
                     borderColor: t.color,
                     color: isJustSaved ? "white" : t.color,
-                    background: isJustSaved ? t.color : "white",
+                    background: isJustSaved ? t.color : isExpanded ? "#f2ede4" : "white",
                     transform: isJustSaved ? "scale(0.96)" : "scale(1)",
+                    boxShadow: isExpanded ? `0 0 0 2px ${t.color}` : "none",
                   }}
-                  onClick={() => saveObservation(freeText.trim() || t.label, t.label)}
+                  onClick={() => setExpandedGrade(isExpanded ? null : t.label)}
                 >
                   <span style={{ fontSize: 26 }}>{isJustSaved ? "✓" : t.emoji}</span>
                   <span>{t.label}</span>
@@ -333,6 +432,48 @@ export default function Teacher() {
               );
             })}
           </div>
+
+          {expandedGrade && (
+            <div style={styles.reasonPanel}>
+              <div style={styles.reasonPanelHeader}>
+                <span style={{ ...styles.intentionLabel, ...(justSavedReason ? { color: "#4e7a60", fontWeight: 700 } : {}) }}>
+                  {justSavedReason
+                    ? "✓ Saved"
+                    : `${expandedGrade} reason${freeText.trim() ? " (will combine with your note above)" : ""}`}
+                </span>
+                {!justSavedReason && (
+                  <button style={styles.linkButton} onClick={() => setExpandedGrade(null)}>Cancel</button>
+                )}
+              </div>
+              <div style={styles.reasonGrid}>
+                {reasonsFor(subject, expandedGrade).map((reason) => {
+                  const isJustPicked = justSavedReason === reason;
+                  return (
+                    <button
+                      key={reason}
+                      disabled={saving || !!justSavedReason}
+                      style={{
+                        ...styles.reasonChip,
+                        ...(isJustPicked ? { background: "#4e7a60", color: "white", borderColor: "#4e7a60" } : {}),
+                      }}
+                      onClick={() => pickReason(reason)}
+                    >
+                      {isJustPicked ? "✓ " : ""}{reason}
+                    </button>
+                  );
+                })}
+              </div>
+              {!justSavedReason && (
+                <button
+                  style={styles.reasonSkip}
+                  disabled={saving}
+                  onClick={() => pickReason(expandedGrade)}
+                >
+                  None of these — just log "{expandedGrade}"
+                </button>
+              )}
+            </div>
+          )}
 
           <div style={styles.intentionLabel}>More</div>
           <div style={styles.quickTagGrid}>
@@ -397,7 +538,13 @@ const styles: Record<string, React.CSSProperties> = {
   studentChipActive: { background: "#3d5a80", color: "white", borderColor: "#3d5a80" },
   quickTagGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 },
   quickTagButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: 14, borderRadius: 14, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer", fontSize: 13, transition: "all 0.15s ease" },
-  ragRow: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 16 },  ragButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 6px", borderRadius: 14, border: "2px solid", cursor: "pointer", fontSize: 12, fontWeight: 600, transition: "all 0.15s ease" },
+  ragRow: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 10 },
+  ragButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 6px", borderRadius: 14, border: "2px solid", cursor: "pointer", fontSize: 12, fontWeight: 600, transition: "all 0.15s ease" },
+  reasonPanel: { background: "#fff", border: "1.5px solid #d9d2c5", borderRadius: 14, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 },
+  reasonPanelHeader: { display: "flex", alignItems: "center", justifyContent: "space-between" },
+  reasonGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 },
+  reasonChip: { padding: "10px 10px", borderRadius: 10, border: "1.5px solid #d9d2c5", background: "#f2ede4", color: "#2c2825", fontSize: 12.5, textAlign: "left", cursor: "pointer", lineHeight: 1.3 },
+  reasonSkip: { padding: "8px 10px", borderRadius: 10, border: "1.5px dashed #d9d2c5", background: "none", color: "#7a7068", fontSize: 12, cursor: "pointer" },
   savedBanner: { textAlign: "center", fontWeight: 600, color: "#4e7a60", fontSize: 14, minHeight: 20, marginBottom: 6 },
   freeTextRow: { display: "flex", gap: 8, marginBottom: 8 },
   freeTextInput: { flex: 1, padding: 12, borderRadius: 10, border: "1.5px solid #d9d2c5", boxSizing: "border-box" },
