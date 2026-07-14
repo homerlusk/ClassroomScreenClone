@@ -77,6 +77,17 @@ function doGet(e) {
       const students = sheetToObjects_(sheet);
       return jsonResponse_({ ok: true, students });
     }
+    if (action === "activeSubject") {
+      // What's currently the headline lesson on the classroom screen. Stored as a
+      // script property (not a sheet row) since it's a single always-changing value,
+      // not a log — this is how the /teacher page can auto-follow the big screen.
+      const props = PropertiesService.getScriptProperties();
+      return jsonResponse_({
+        ok: true,
+        subject: props.getProperty("activeSubject") || "",
+        updatedAt: props.getProperty("activeSubjectUpdatedAt") || "",
+      });
+    }
     return jsonResponse_({ ok: false, error: "Unknown action: " + action });
   } catch (err) {
     return jsonResponse_({ ok: false, error: String(err) });
@@ -159,6 +170,13 @@ function doPost(e) {
       (payload.students || []).forEach(s => {
         sheet.appendRow([s.name, s.present, now]);
       });
+      return jsonResponse_({ ok: true });
+    }
+
+    if (action === "setActiveSubject") {
+      const props = PropertiesService.getScriptProperties();
+      props.setProperty("activeSubject", payload.subject || "");
+      props.setProperty("activeSubjectUpdatedAt", new Date().toISOString());
       return jsonResponse_({ ok: true });
     }
 

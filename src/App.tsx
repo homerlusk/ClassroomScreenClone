@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { getApiUrl, setApiUrl, pushIntentions, pushStudents, fetchNotes, type Note } from "./services/notes";
+import { getApiUrl, setApiUrl, pushIntentions, pushStudents, pushActiveSubject, fetchNotes, type Note } from "./services/notes";
 
 const C = {
   bg: "#f2ede4",
@@ -461,6 +461,17 @@ function ReportDraftingPanel({
   const [apiUrlInput, setApiUrlInput] = useState<string>(getApiUrl());
   const [editingApiUrl, setEditingApiUrl] = useState<boolean>(!getApiUrl());
   const [notesRefreshTick, setNotesRefreshTick] = useState(0);
+  const [geminiKey, setGeminiKeyState] = useState<string>(() => localStorage.getItem("geminiApiKey") || "");
+  const [editingKey, setEditingKey] = useState<boolean>(() => !localStorage.getItem("geminiApiKey"));
+  const [keyInput, setKeyInput] = useState<string>(() => localStorage.getItem("geminiApiKey") || "");
+  const [draftError, setDraftError] = useState<string>("");
+
+  function saveGeminiKey() {
+    const trimmed = keyInput.trim();
+    localStorage.setItem("geminiApiKey", trimmed);
+    setGeminiKeyState(trimmed);
+    setEditingKey(false);
+  }
 
   function connectApiUrl() {
     setApiUrl(apiUrlInput);
@@ -538,6 +549,30 @@ function ReportDraftingPanel({
     return combined || "No observations recorded.";
   };
 
+  async function callGemini(prompt: string): Promise<string> {
+    if (!geminiKey) throw new Error("Add your Gemini API key above first.");
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": geminiKey,
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error?.message || `Request failed (${response.status})`);
+    }
+    const text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+    if (!text.trim()) throw new Error("Gemini returned an empty response — try again.");
+    return text.trim();
+  }
+
   const generateDraft = async (section: "literacy" | "maths" | "sel", unitIdx?: number) => {
     const key = unitIdx !== undefined ? `uoi_${unitIdx}` : section;
     setGenerating(g => ({ ...g, [key]: true }));
@@ -572,24 +607,16 @@ Write approximately 150 words covering how the student manages ${possessive} lea
     }
 
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: prompt }]
-        })
-      });
-      const data = await response.json();
-      const text = data.content?.map((c: any) => c.text || "").join("") || "";
+      const text = await callGemini(prompt);
       if (unitIdx !== undefined) {
-        updateReport("uoi", "unitDraft", text.trim(), unitIdx);
+        updateReport("uoi", "unitDraft", text, unitIdx);
       } else {
-        updateReport(section, "draft", text.trim());
+        updateReport(section, "draft", text);
       }
+      setDraftError("");
     } catch (e) {
       console.error("API error", e);
+      setDraftError(e instanceof Error ? e.message : "Something went wrong generating the draft.");
     }
     setGenerating(g => ({ ...g, [key]: false }));
   };
@@ -611,25 +638,56 @@ Teacher observations: ${obs}
 Write approximately 150 words in warm, professional PYP language. Reference the central idea and lines of inquiry. Be specific about what the student understood, inquired into, and demonstrated. Do not include growth areas. Write in third person. Start with the student's name.`;
 
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: prompt }]
-        })
-      });
-      const data = await response.json();
-      const text = data.content?.map((c: any) => c.text || "").join("") || "";
-      updateReport("uoi", "unitDraft", text.trim(), unitIdx);
+      const text = await callGemini(prompt);
+      updateReport("uoi", "unitDraft", text, unitIdx);
+      setDraftError("");
     } catch (e) {
       console.error("API error", e);
+      setDraftError(e instanceof Error ? e.message : "Something went wrong generating the draft.");
     }
     setGenerating(g => ({ ...g, [key]: false }));
   };
 
+  // Free alternative to AI generation — just formats the raw phone notes into
+  // a readable starting draft, no API call and no cost. SEL pulls from every
+  // subject since it's meant to be cross-subject; the others filter to one.
+  const compileFromNotes = (sectionKey: "literacy" | "maths" | "sel") => {
+    const relevant = sectionKey === "sel" ? phoneNotes : phoneNotes.filter(n => n.subject === sectionKey);
+    if (relevant.length === 0) {
+      setDraftError(`No phone notes found${sectionKey === "sel" ? "" : ` tagged "${sectionKey}"`} to compile yet.`);
+      return;
+    }
+    const lines = relevant
+      .slice()
+      .sort((a, b) => (a.date || "").localeCompare(b.date || ""))
+      .map(n => `• ${n.date}${sectionKey === "sel" && n.subject ? ` [${n.subject}]` : ""}${n.tags ? ` (${n.tags})` : ""}: ${n.text}`)
+      .join("\n");
+    updateReport(sectionKey, "draft", `Observations for ${selectedStudent}, compiled from ${relevant.length} logged note${relevant.length === 1 ? "" : "s"}:\n\n${lines}`);
+    setDraftError("");
+  };
+
+  const compileUoiFromNotes = (unitIdx: number) => {
+    const relevant = phoneNotes.filter(n => n.subject === "uoi");
+    if (relevant.length === 0) {
+      setDraftError(`No phone notes tagged "uoi" to compile yet.`);
+      return;
+    }
+    const lines = relevant
+      .slice()
+      .sort((a, b) => (a.date || "").localeCompare(b.date || ""))
+      .map(n => `• ${n.date}${n.tags ? ` (${n.tags})` : ""}: ${n.text}`)
+      .join("\n");
+    updateReport("uoi", "unitDraft", `Observations for ${selectedStudent}, compiled from ${relevant.length} logged note${relevant.length === 1 ? "" : "s"}:\n\n${lines}`, unitIdx);
+    setDraftError("");
+  };
+
   const report = getStudentReport();
+  const notedSubjects = useMemo(
+    () => Array.from(new Set(phoneNotes.map(n => n.subject).filter(Boolean))),
+    [phoneNotes]
+  );
+  const matchableTabs = ["literacy", "maths", "uoi"];
+  const noNotesMatchAnyTab = phoneNotes.length > 0 && !notedSubjects.some(s => matchableTabs.includes(s));
   const ACHIEVEMENTS = ["EE", "ME", "AE", "NS"];
   const TABS = [
     { key: "literacy" as const, label: "📚 Literacy" },
@@ -718,11 +776,48 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
           📱 No phone notes logged yet for {selectedStudent}.
           <button onClick={() => setEditingApiUrl(true)} style={linkStyle}>Change API URL</button>
         </span>
+      ) : noNotesMatchAnyTab ? (
+        <span style={{ fontSize: "11px", color: C.roseDark, fontStyle: "italic" }}>
+          ⚠️ {phoneNotes.length} phone note{phoneNotes.length === 1 ? "" : "s"} loaded for {selectedStudent}, but none are tagged "literacy", "maths", or "uoi" — they won't show under any tab. Subject value{notedSubjects.length === 1 ? "" : "s"} found: {notedSubjects.join(", ") || "(blank)"}.
+        </span>
       ) : (
         <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
-          📱 {phoneNotes.length} phone note{phoneNotes.length === 1 ? "" : "s"} loaded for {selectedStudent} — used automatically in "Generate Draft" and shown below each section.
+          📱 {phoneNotes.length} phone note{phoneNotes.length === 1 ? "" : "s"} loaded for {selectedStudent} (subjects: {notedSubjects.join(", ")}) — used automatically in "Generate Draft" and shown below each section.
           <button onClick={() => setEditingApiUrl(true)} style={linkStyle}>Change API URL</button>
         </span>
+      )}
+
+      {editingKey ? (
+        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", background: C.highlight, borderRadius: "10px", padding: "8px 10px" }}>
+          <span style={{ fontSize: "11px", color: C.muted, whiteSpace: "nowrap" }}>✨ Gemini API Key:</span>
+          <input
+            type="password"
+            value={keyInput}
+            onChange={(e) => setKeyInput(e.target.value)}
+            placeholder="AIza..."
+            style={{ ...inputStyle, flex: "1 1 220px", fontSize: "12px", padding: "5px 10px" }}
+            onKeyDown={(e) => e.key === "Enter" && keyInput.trim() && saveGeminiKey()}
+          />
+          <button onClick={saveGeminiKey} disabled={!keyInput.trim()} style={{ ...btnSage, fontSize: "11px", padding: "5px 12px" }}>Save</button>
+          {!!geminiKey && (
+            <button onClick={() => { setKeyInput(geminiKey); setEditingKey(false); }} style={{ ...btnGhost, fontSize: "11px", padding: "5px 10px" }}>Cancel</button>
+          )}
+          <span style={{ fontSize: "10.5px", color: C.muted, width: "100%" }}>
+            Required for "✨ Generate Draft" — free to get at aistudio.google.com, no credit card needed. Stored only in this browser's local storage and sent directly from your browser to Google, so only enter it on a device you trust.
+          </span>
+        </div>
+      ) : (
+        <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
+          ✨ Gemini API key connected.
+          <button onClick={() => setEditingKey(true)} style={linkStyle}>Change key</button>
+        </span>
+      )}
+
+      {draftError && (
+        <div style={{ background: "#f6e6e6", border: `1.5px solid ${C.roses}`, borderRadius: "10px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "12px", color: C.roseDark }}>⚠️ Draft generation failed: {draftError}</span>
+          <button onClick={() => setDraftError("")} style={{ ...btnGhost, fontSize: "11px", padding: "3px 10px", marginLeft: "auto" }}>Dismiss</button>
+        </div>
       )}
 
       {/* Tabs */}
@@ -749,8 +844,12 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
                   color: report.literacy.achievement === a ? "#fff" : C.text,
                   border: `1px solid ${C.cardBorder}` }}>{a}</button>
             ))}
+            <button onClick={() => compileFromNotes("literacy")}
+              style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px", marginLeft: "auto" }}>
+              📋 Compile from Notes (free)
+            </button>
             <button onClick={() => generateDraft("literacy")} disabled={generating.literacy}
-              style={{ ...btnSage, padding: "6px 16px", fontSize: "13px", marginLeft: "auto" }}>
+              style={{ ...btnSage, padding: "6px 16px", fontSize: "13px" }}>
               {generating.literacy ? "✨ Generating..." : "✨ Generate Draft"}
             </button>
           </div>
@@ -790,8 +889,12 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
                   color: report.maths.achievement === a ? "#fff" : C.text,
                   border: `1px solid ${C.cardBorder}` }}>{a}</button>
             ))}
+            <button onClick={() => compileFromNotes("maths")}
+              style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px", marginLeft: "auto" }}>
+              📋 Compile from Notes (free)
+            </button>
             <button onClick={() => generateDraft("maths")} disabled={generating.maths}
-              style={{ ...btnSage, padding: "6px 16px", fontSize: "13px", marginLeft: "auto" }}>
+              style={{ ...btnSage, padding: "6px 16px", fontSize: "13px" }}>
               {generating.maths ? "✨ Generating..." : "✨ Generate Draft"}
             </button>
           </div>
@@ -841,6 +944,10 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
                   updated[i] = { ...updated[i], title: e.target.value };
                   setReportData(prev => ({ ...prev, units: updated }));
                 }} placeholder="Unit title..." style={{ ...inputStyle, flex: 1, fontSize: "13px", padding: "4px 10px" }} />
+                <button onClick={() => compileUoiFromNotes(i)}
+                  style={{ ...btnGhost, padding: "6px 12px", fontSize: "11px", whiteSpace: "nowrap" }}>
+                  📋 Compile (free)
+                </button>
                 <button onClick={() => generateUoiDraft(i)} disabled={generating[`uoi_${i}`]}
                   style={{ ...btnSage, padding: "6px 14px", fontSize: "12px", whiteSpace: "nowrap" }}>
                   {generating[`uoi_${i}`] ? "✨ Generating..." : "✨ Generate"}
@@ -896,8 +1003,12 @@ Write approximately 150 words in warm, professional PYP language. Reference the 
                   color: report.sel.achievement === a ? "#fff" : C.text,
                   border: `1px solid ${C.cardBorder}` }}>{a}</button>
             ))}
+            <button onClick={() => compileFromNotes("sel")}
+              style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px", marginLeft: "auto" }}>
+              📋 Compile from Notes (free)
+            </button>
             <button onClick={() => generateDraft("sel")} disabled={generating.sel}
-              style={{ ...btnSage, padding: "6px 16px", fontSize: "13px", marginLeft: "auto" }}>
+              style={{ ...btnSage, padding: "6px 16px", fontSize: "13px" }}>
               {generating.sel ? "✨ Generating..." : "✨ Generate Draft"}
             </button>
           </div>
@@ -1094,6 +1205,13 @@ const playTimerChime = () => {
     if (!getApiUrl()) return;
     pushStudents(students.map(s => ({ name: s.name, present: s.present }))).catch(() => {});
   }, [students]);
+
+  // Tell the /teacher page what's currently being taught, so it can auto-follow
+  // instead of relying on the teacher remembering to switch subjects manually.
+  useEffect(() => {
+    if (!getApiUrl()) return;
+    pushActiveSubject(headlineLessonId).catch(() => {});
+  }, [headlineLessonId]);
 
   const currentProfile: SubjectProfile = subjectProfiles[headlineLessonId] || {
     materials: {}, learningObjective: headlineLessonId === "uoi" ? "" : "🎯 ",

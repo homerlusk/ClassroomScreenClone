@@ -105,3 +105,15 @@ export async function fetchStudents(): Promise<{ name: string; present: boolean 
 export async function pushStudents(students: { name: string; present: boolean }[]) {
   return post("setStudents", { students });
 }
+
+// "Active subject" is the headline lesson currently showing on the classroom screen.
+// It's a single always-changing value (not a log), so the /teacher page can poll it
+// to auto-follow whatever's being taught right now.
+export async function fetchActiveSubject(): Promise<{ subject: string; updatedAt: string }> {
+  const data = await get("activeSubject");
+  return { subject: data.subject || "", updatedAt: data.updatedAt || "" };
+}
+
+export async function pushActiveSubject(subject: string) {
+  return post("setActiveSubject", { subject });
+}

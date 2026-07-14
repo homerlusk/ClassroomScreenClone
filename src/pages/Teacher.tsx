@@ -80,8 +80,10 @@ export default function Teacher() {
       const [intentionsData, studentsData] = await Promise.all([fetchIntentions(), fetchStudents()]);
       setIntentions(intentionsData);
       setStudents(studentsData);
-      const subjects = Object.keys(intentionsData);
-      if (subjects.length && !subject) setSubject(subjects[0]);
+      // Deliberately NOT auto-selecting a subject here. It used to silently default
+      // to whichever subject happened to be first in the sheet — easy to not notice,
+      // and easy to end up logging everything under the wrong subject. Now the
+      // teacher has to consciously tap a subject tab before anything can be saved.
       setConnected(true);
       setConnectionError("");
     } catch (err) {
@@ -211,6 +213,12 @@ export default function Teacher() {
         ))}
       </div>
 
+      {!subject && Object.keys(intentions).length > 0 && (
+        <div style={styles.subjectPrompt}>
+          👆 Tap a subject above before logging observations — this app doesn't auto-track what's showing on the classroom screen, so pick it every time you switch lessons.
+        </div>
+      )}
+
       {currentIntention && (
         <div style={styles.intentionBanner}>
           <div style={styles.intentionLabel}>Linked to what's on screen</div>
@@ -218,6 +226,7 @@ export default function Teacher() {
         </div>
       )}
 
+      {subject && (
       <div style={styles.studentGrid}>
         {students.map((s) => (
           <button
@@ -229,6 +238,7 @@ export default function Teacher() {
           </button>
         ))}
       </div>
+      )}
 
       {selectedStudent && (
         <>
@@ -337,6 +347,7 @@ const styles: Record<string, React.CSSProperties> = {
   tab: { padding: "8px 14px", borderRadius: 20, border: "1.5px solid #d9d2c5", background: "#ebe5d9", whiteSpace: "nowrap", cursor: "pointer", textTransform: "capitalize" },
   tabActive: { background: "#4e7a60", color: "white", borderColor: "#4e7a60" },
   intentionBanner: { background: "#e8e0cf", borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 14 },
+  subjectPrompt: { background: "#f6e6c9", border: "1.5px solid #c99a2e", borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13.5, fontWeight: 600, color: "#5a4415" },
   intentionLabel: { fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#7a7068", marginBottom: 4 },
   studentGrid: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 },
   studentChip: { padding: "10px 14px", borderRadius: 20, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer" },
