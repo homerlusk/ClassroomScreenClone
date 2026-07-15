@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { getApiUrl, setApiUrl, pushIntentions, pushStudents, pushActiveSubject, fetchNotes, type Note } from "./services/notes";
+import { getApiUrl, setApiUrl, pushIntentions, pushStudents, pushActiveSubject, fetchNotes, fetchAppConfig, pushAppConfig, fetchStudents, exportReportsToDoc, type Note, type DocReportStudent } from "./services/notes";
 import {
   Palette, Dumbbell, Music, Drama, Languages, Globe, Apple, Sandwich, Calculator,
   SpellCheck, BookOpen, BookMarked, Lightbulb, Library, Search, Brain, Users, Ticket, Pin,
@@ -1190,6 +1190,14 @@ export default function App() {
   const [swRunning, setSwRunning] = useState<boolean>(false);
   const [swMs, setSwMs] = useState<number>(0);
   const swRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Captured synchronously during the first render — i.e. before ANY effect
+  // (including the plain localStorage-persist effects below) has had a
+  // chance to write a default value back in. This is what lets the restore
+  // effect tell "genuinely fresh browser" apart from "already has data".
+  const wasStudentsEmptyAtBoot = useRef(localStorage.getItem("classListObjects") === null).current;
+  const wasTimetableEmptyAtBoot = useRef(localStorage.getItem("timetable") === null).current;
+  const wasThemePresetsEmptyAtBoot = useRef(localStorage.getItem("uoiThemePresetsRegistry") === null).current;
+  const wasReportDataEmptyAtBoot = useRef(localStorage.getItem("reportData") === null).current;
   const [notes, setNotes] = useState<string>(() => localStorage.getItem("notes") || "");
   const [students, setStudents] = useState<Student[]>(() => {
     try { const stored = localStorage.getItem("classListObjects"); return stored ? JSON.parse(stored) : []; }
@@ -1220,6 +1228,8 @@ export default function App() {
     catch { return { units: [{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""},{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""},{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""}], studentReports: {} }; }
   });
   const [showReportPanel, setShowReportPanel] = useState<boolean>(false);
+  const [exportingDoc, setExportingDoc] = useState<boolean>(false);
+  const [exportDocError, setExportDocError] = useState<string>("");
   const [teams, setTeams] = useState<ScoreTeam[]>([{ id: 1, name: "Team A", score: 0, color: "#2f9e52" }, { id: 2, name: "Team B", score: 0, color: "#2f6fb8" }]);
   const [newTeamName, setNewTeamName] = useState<string>("");
   const [diceValue, setDiceValue] = useState<number>(1);
@@ -1348,8 +1358,80 @@ const playTimerChime = () => {
   }, [subjectProfiles, timetable]);
   useEffect(() => {
     if (!getApiUrl()) return;
-    pushStudents(students.map(s => ({ name: s.name, present: s.present }))).catch(() => {});
+    pushStudents(students.map(s => ({ name: s.name, present: s.present, pronoun: s.pronoun }))).catch(() => {});
   }, [students]);
+
+  // ── BACKUP TO GOOGLE SHEETS ──
+  // Notes were already safe (they've always lived in the Sheet). Timetable,
+  // theme presets, and report drafts previously lived ONLY in this browser's
+  // localStorage — gone forever if the cache cleared or you switched devices.
+  // Debounced (1.5s) so typing in a draft textarea doesn't fire a network
+  // request on every keystroke.
+  useEffect(() => {
+    if (!getApiUrl()) return;
+    const id = setTimeout(() => { pushAppConfig("timetable", JSON.stringify(timetable)).catch(() => {}); }, 1500);
+    return () => clearTimeout(id);
+  }, [timetable]);
+  useEffect(() => {
+    if (!getApiUrl()) return;
+    const id = setTimeout(() => { pushAppConfig("themePresets", JSON.stringify(themePresets)).catch(() => {}); }, 1500);
+    return () => clearTimeout(id);
+  }, [themePresets]);
+  useEffect(() => {
+    if (!getApiUrl()) return;
+    // Stored as one small row per student (not one giant blob for the whole
+    // class) — a single cell in Google Sheets caps out at 50,000 characters,
+    // and a full class's worth of drafts in one cell would blow past that by
+    // mid-term, silently failing right when the backup matters most.
+    const id = setTimeout(() => {
+      pushAppConfig("reportUnits", JSON.stringify(reportData.units)).catch(() => {});
+      Object.entries(reportData.studentReports).forEach(([name, report]) => {
+        pushAppConfig(`reportData:${name}`, JSON.stringify(report)).catch(() => {});
+      });
+    }, 1500);
+    return () => clearTimeout(id);
+  }, [reportData]);
+
+  // Restore from the cloud backup exactly once, on mount — and only into
+  // whichever pieces were genuinely empty when this browser loaded (a fresh
+  // device/cleared cache), so it can never clobber work already in progress
+  // on a browser that already has its own local data.
+  useEffect(() => {
+    if (!getApiUrl()) return;
+    if (wasTimetableEmptyAtBoot || wasThemePresetsEmptyAtBoot || wasReportDataEmptyAtBoot) {
+      fetchAppConfig().then((config) => {
+        if (wasTimetableEmptyAtBoot && config.timetable) {
+          try { setTimetable(JSON.parse(config.timetable)); } catch {}
+        }
+        if (wasThemePresetsEmptyAtBoot && config.themePresets) {
+          try { setThemePresets(JSON.parse(config.themePresets)); } catch {}
+        }
+        if (wasReportDataEmptyAtBoot) {
+          const studentReports: ReportData["studentReports"] = {};
+          Object.entries(config).forEach(([key, value]) => {
+            if (key.startsWith("reportData:")) {
+              try { studentReports[key.slice("reportData:".length)] = JSON.parse(value); } catch {}
+            }
+          });
+          let units: ReportData["units"] | undefined;
+          if (config.reportUnits) {
+            try { units = JSON.parse(config.reportUnits); } catch {}
+          }
+          if (units || Object.keys(studentReports).length > 0) {
+            setReportData(prev => ({ units: units || prev.units, studentReports }));
+          }
+        }
+      }).catch(() => {});
+    }
+    if (wasStudentsEmptyAtBoot) {
+      fetchStudents().then((cloudStudents) => {
+        if (cloudStudents.length) {
+          setStudents(cloudStudents.map(s => ({ name: s.name, present: s.present, pronoun: (s.pronoun as "he" | "she" | "they") || "they" })));
+        }
+      }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Tell the /teacher page what's currently being taught, so it can auto-follow
   // instead of relying on the teacher remembering to switch subjects manually.
@@ -1501,6 +1583,51 @@ const playTimerChime = () => {
     URL.revokeObjectURL(url);
   };
 
+  // Turns whatever's currently in Draft Reports into a formatted Google Doc —
+  // one titled section per student, one sub-heading per subject. This is the
+  // polished, human-readable deliverable; the Sheets backup above is the
+  // separate, invisible safety net that keeps the editable data itself safe.
+  const exportAllReportsToDoc = async () => {
+    const names = Object.keys(reportData.studentReports);
+    if (names.length === 0) {
+      setExportDocError("No report drafts found yet — write or generate some drafts first.");
+      return;
+    }
+    setExportingDoc(true);
+    setExportDocError("");
+    try {
+      const docStudents: DocReportStudent[] = names.map(name => {
+        const r = reportData.studentReports[name];
+        const sections: { label: string; text: string }[] = [];
+        const addSection = (label: string, draft: string, achievement: string, growth1: string, growth2: string) => {
+          const parts: string[] = [];
+          if (achievement) parts.push(`Achievement: ${achievement}`);
+          if (draft?.trim()) parts.push(draft.trim());
+          const growths = [growth1, growth2].filter(Boolean);
+          if (growths.length) parts.push(`Growth areas: ${growths.join("; ")}`);
+          sections.push({ label, text: parts.join("\n\n") || "(No content yet)" });
+        };
+        addSection("Literacy", r.literacy.draft, r.literacy.achievement, r.literacy.growth1, r.literacy.growth2);
+        addSection("Maths", r.maths.draft, r.maths.achievement, r.maths.growth1, r.maths.growth2);
+        reportData.units.forEach((unit, i) => {
+          if (unit.title?.trim() || r.uoi.unitDrafts[i]?.trim()) {
+            addSection(`Unit of Inquiry: ${unit.title || `Unit ${i + 1}`}`, r.uoi.unitDrafts[i] || "", i === 0 ? r.uoi.achievement : "", "", "");
+          }
+        });
+        if (r.uoi.growth1 || r.uoi.growth2) {
+          sections.push({ label: "UOI Overall Growth Areas", text: [r.uoi.growth1, r.uoi.growth2].filter(Boolean).join("; ") || "(None yet)" });
+        }
+        addSection("Social Emotional Learning", r.sel.draft, r.sel.achievement, r.sel.growth1, r.sel.growth2);
+        return { name, sections };
+      });
+      const { url: docUrl } = await exportReportsToDoc(docStudents, `Reports — ${new Date().toLocaleDateString()}`);
+      window.open(docUrl, "_blank");
+    } catch (e) {
+      setExportDocError(e instanceof Error ? e.message : "Export failed — check that the Apps Script backend has been redeployed with Docs permission granted.");
+    }
+    setExportingDoc(false);
+  };
+
   const showSidebar = timetable.length > 0;
   const weekdayFull = time.toLocaleDateString(undefined, { weekday: "long" }).toUpperCase();
   const monthFull = time.toLocaleDateString(undefined, { month: "long" }).toUpperCase();
@@ -1624,10 +1751,21 @@ return (
                   style={{ ...btnBase, padding: "8px 12px", fontSize: "13px", textAlign: "left", width: "100%", background: "none", borderRadius: "8px", color: C.text }}>
                   📥 Export Summary
                 </button>
+                <button onClick={() => { exportAllReportsToDoc(); setActiveGroupMenu(null); }} disabled={exportingDoc}
+                  style={{ ...btnBase, padding: "8px 12px", fontSize: "13px", textAlign: "left", width: "100%", background: "none", borderRadius: "8px", color: C.text }}>
+                  {exportingDoc ? "📄 Creating doc..." : "📄 Export All to Google Doc"}
+                </button>
               </div>
             )}
           </div>
         </div>
+        )}
+
+        {exportDocError && !presentationMode && (
+          <div style={{ background: "#f6e6e6", border: `1.5px solid ${C.roses}`, borderRadius: "12px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "13px", color: C.roseDark }}>⚠️ {exportDocError}</span>
+            <button onClick={() => setExportDocError("")} style={{ ...btnGhost, fontSize: "11px", padding: "3px 10px", marginLeft: "auto" }}>Dismiss</button>
+          </div>
         )}
 
         {/* MATERIALS PANEL */}
