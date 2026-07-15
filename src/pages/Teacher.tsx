@@ -155,6 +155,8 @@ export default function Teacher() {
   const [expandedGrade, setExpandedGrade] = useState<string | null>(null);
   const [showAbsent, setShowAbsent] = useState(false);
   const [showMoreTags, setShowMoreTags] = useState(false);
+  const [tagHintDismissed, setTagHintDismissed] = useState(() => localStorage.getItem("tagHintDismissed") === "1");
+  const [showRecent, setShowRecent] = useState(false);
   // Which reason chip was just picked, kept visible briefly so the save is
   // unmistakable before the panel closes — closing instantly made it unclear
   // whether the tap actually registered.
@@ -239,6 +241,7 @@ export default function Teacher() {
 
   useEffect(() => {
     setExpandedGrade(null);
+    setShowRecent(false);
   }, [selectedStudent, subject]);
 
   const currentIntention = intentions[subject];
@@ -277,7 +280,13 @@ export default function Teacher() {
         setLastSavedTag(tag);
         setTimeout(() => setLastSavedTag(null), 900);
       }
-      setTimeout(() => setSavedFlash(false), 1200);
+      // Bounce back to the roster after the confirmation has had time to
+      // register — keeps you moving through the class instead of staying
+      // "parked" on one student until you manually pick the next one.
+      setTimeout(() => {
+        setSavedFlash(false);
+        setSelectedStudent("");
+      }, 1200);
     } catch (err) {
       setConnectionError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -451,9 +460,14 @@ export default function Teacher() {
             </button>
           </div>
 
-          <div style={styles.tagHint}>
-            Tap a grade below to pick a quick reason — or add your own note above first, then tap a grade to attach it.
-          </div>
+          {!tagHintDismissed && (
+            <div style={styles.tagHint}>
+              Tap a grade below to pick a quick reason — or add your own note above first, then tap a grade to attach it.
+              <button onClick={() => { localStorage.setItem("tagHintDismissed", "1"); setTagHintDismissed(true); }} style={styles.tagHintDismiss}>
+                ✕
+              </button>
+            </div>
+          )}
 
           <div style={styles.ragRow}>
             {RAG_TAGS.map((t) => {
@@ -551,8 +565,10 @@ export default function Teacher() {
 
           {recentNotes.length > 0 && (
             <div style={styles.recentList}>
-              <div style={styles.intentionLabel}>Recent for {selectedStudent}</div>
-              {recentNotes.map((n) => (
+              <button style={styles.moreTagsToggle} onClick={() => setShowRecent(v => !v)}>
+                {showRecent ? "▲ Hide recent" : `▼ Show recent for ${selectedStudent} (${recentNotes.length})`}
+              </button>
+              {showRecent && recentNotes.map((n) => (
                 <div key={n.id} style={styles.recentItem}>
                   <span style={styles.recentDate}>{n.date}</span> {n.text}
                 </div>
@@ -582,7 +598,8 @@ const styles: Record<string, React.CSSProperties> = {
   subjectPrompt: { background: "#f6e6c9", border: "1.5px solid #c99a2e", borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13.5, fontWeight: 600, color: "#5a4415" },
   syncRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: "#eef1ea", borderRadius: 8, padding: "6px 10px", marginBottom: 12, fontSize: 12.5, color: "#4a5a4e" },
   syncButton: { background: "#4e7a60", color: "white", border: "none", borderRadius: 8, padding: "4px 10px", fontSize: 11.5, fontWeight: 600, cursor: "pointer" },
-  tagHint: { fontSize: 11.5, color: "#7a7068", fontStyle: "italic", marginBottom: 8, textAlign: "center" },
+  tagHint: { fontSize: 11.5, color: "#7a7068", fontStyle: "italic", marginBottom: 8, textAlign: "center", position: "relative", padding: "0 20px" },
+  tagHintDismiss: { position: "absolute", right: 0, top: -2, background: "none", border: "none", color: "#7a7068", fontSize: 13, cursor: "pointer", padding: 4 },
   intentionLabel: { fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#7a7068", marginBottom: 4 },
   studentGrid: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 },
   studentChip: { padding: "10px 14px", borderRadius: 20, border: "1.5px solid #d9d2c5", background: "#ebe5d9", color: "#2c2825", cursor: "pointer" },

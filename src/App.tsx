@@ -24,7 +24,7 @@ const C = {
 };
 
 const font = "'Lexend', 'Century Gothic', 'Trebuchet MS', Arial, sans-serif";
-const TEAM_COLORS = [C.sage, C.slate, C.roses, C.amber, C.lavender];
+const TEAM_COLORS = ["#2f9e52", "#2f6fb8", "#d1453f", "#d99a1f", "#7b52c9"];
 
 const ATL_SKILLS = ["Thinking", "Communication", "Social", "Self-management", "Research"] as const;
 type ATLSkill = typeof ATL_SKILLS[number];
@@ -85,9 +85,9 @@ const WIDGET_GROUPS: { label: string; emoji: string; widgets: Widget[] }[] = [
 ];
 
 const PALETTES = {
-  specialists: { color: "#2e4361", bg: "#dbe3ed" },
-  breaks: { color: "#2d543d", bg: "#e2f0e6" },
-  others: { color: "#1a4d6e", bg: "#e1f1fc" }
+  specialists: { color: "#153570", bg: "#c3d8f5" },
+  breaks: { color: "#155c30", bg: "#bfeecb" },
+  others: { color: "#0a5487", bg: "#bfe6fa" }
 };
 
 interface Presets { centralIdea: string; loi1: string; loi2: string; loi3: string; }
@@ -207,7 +207,10 @@ function CircleTimer({ pct, minutes, seconds }: { pct: number; minutes: number; 
   const x = cx + r * Math.sin(angle);
   const y = cy - r * Math.cos(angle);
   const largeArc = angle > Math.PI ? 1 : 0;
-  const fillColor = pct > 0.5 ? C.sage : pct > 0.2 ? C.amber : C.roses;
+  // Vivid, saturated variants used only for this ring — the shared C.sage/amber/roses
+  // used everywhere else in the UI are deliberately muted, but a timer meant to be
+  // read at a glance from across a room needs more punch than that.
+  const fillColor = pct > 0.5 ? "#2f9e52" : pct > 0.2 ? "#d99a1f" : "#d1453f";
   const timeLabel = `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, "0")}`;
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1181,6 +1184,9 @@ export default function App() {
   const [seconds, setSeconds] = useState<number>(300);
   const [running, setRunning] = useState<boolean>(false);
   const [minutes, setMinutes] = useState<number>(5);
+  // Drives a visual flash on the Timer card when it hits zero — audio alone
+  // is easy to miss over classroom noise or if the tab isn't the active window.
+  const [timerJustFinished, setTimerJustFinished] = useState<boolean>(false);
   const [swRunning, setSwRunning] = useState<boolean>(false);
   const [swMs, setSwMs] = useState<number>(0);
   const swRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1214,7 +1220,7 @@ export default function App() {
     catch { return { units: [{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""},{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""},{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""}], studentReports: {} }; }
   });
   const [showReportPanel, setShowReportPanel] = useState<boolean>(false);
-  const [teams, setTeams] = useState<ScoreTeam[]>([{ id: 1, name: "Team A", score: 0, color: C.sage }, { id: 2, name: "Team B", score: 0, color: C.slate }]);
+  const [teams, setTeams] = useState<ScoreTeam[]>([{ id: 1, name: "Team A", score: 0, color: "#2f9e52" }, { id: 2, name: "Team B", score: 0, color: "#2f6fb8" }]);
   const [newTeamName, setNewTeamName] = useState<string>("");
   const [diceValue, setDiceValue] = useState<number>(1);
   const [rolling, setRolling] = useState<boolean>(false);
@@ -1263,6 +1269,12 @@ const playTimerChime = () => {
 
   const toggle = (key: Widget) => setVisible((v) => ({ ...v, [key]: !v[key] }));
 
+  useEffect(() => {
+    if (!timerJustFinished) return;
+    const id = setTimeout(() => setTimerJustFinished(false), 8000);
+    return () => clearTimeout(id);
+  }, [timerJustFinished]);
+
   useEffect(() => { const id = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(id); }, []);
   
    useEffect(() => {
@@ -1272,6 +1284,7 @@ const playTimerChime = () => {
         if (s <= 1) {
           setRunning(false);
           playTimerChime();
+          setTimerJustFinished(true);
           return 0;
         }
         return s - 1;
@@ -1890,14 +1903,31 @@ return (
 
           {/* TIMER */}
           {visible.timer && (
-            <div style={{ ...cardStyle, gridColumn: widgetSpan.timer ? "span 2" : "span 1" }}>
+            <div
+              onClick={() => timerJustFinished && setTimerJustFinished(false)}
+              style={{
+                ...cardStyle,
+                gridColumn: widgetSpan.timer ? "span 2" : "span 1",
+                ...(timerJustFinished ? {
+                  background: C.roses,
+                  border: "2.5px solid #000",
+                  animation: "timerFlash 0.7s ease-in-out infinite",
+                  cursor: "pointer",
+                } : {}),
+              }}
+            >
               {!presentationMode && <button style={closeBtn} onClick={() => toggle("timer")}>×</button>}
+              {timerJustFinished && (
+                <div style={{ textAlign: "center", fontSize: "22px", fontWeight: "900", color: "#000", letterSpacing: "1px", marginBottom: "8px" }}>
+                  ⏰ TIME'S UP! <span style={{ fontSize: "13px", fontWeight: "700", opacity: 0.7 }}>(tap to dismiss)</span>
+                </div>
+              )}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "28px", flexWrap: "wrap-reverse" }}>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: "10px", minWidth: "150px" }}>
                   <input type="number" value={minutes} min={1} onChange={(e) => { const v = Math.max(1, Number(e.target.value)); setMinutes(v); if (!running) setSeconds(v * 60); }} style={{ ...inputStyle, fontSize: "16px", fontWeight: "bold", textAlign: "center" }} />
-                  <button style={btnSage} onClick={() => setRunning(true)} disabled={running}>▶ START</button>
-                  <button style={btnRose} onClick={() => setRunning(false)}>⏸ STOP</button>
-                  <button style={btnGhost} onClick={() => { setRunning(false); setSeconds(minutes * 60); }}>↺ RESET</button>
+                  <button style={btnSage} onClick={(e) => { e.stopPropagation(); setRunning(true); setTimerJustFinished(false); }} disabled={running}>▶ START</button>
+                  <button style={btnRose} onClick={(e) => { e.stopPropagation(); setRunning(false); }}>⏸ STOP</button>
+                  <button style={btnGhost} onClick={(e) => { e.stopPropagation(); setRunning(false); setSeconds(minutes * 60); setTimerJustFinished(false); }}>↺ RESET</button>
                 </div>
                 <CircleTimer pct={seconds / (minutes * 60 || 1)} minutes={minutes} seconds={seconds} />
               </div>
