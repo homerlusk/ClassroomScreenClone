@@ -653,6 +653,12 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
   );
   const matchableTabs = ["literacy", "maths", "uoi"];
   const noNotesMatchAnyTab = phoneNotes.length > 0 && !notedSubjects.some(s => matchableTabs.includes(s));
+  // Only force the setup section open when something actually needs attention —
+  // otherwise it collapses to one line so it doesn't sit above the report
+  // content on every single visit once everything's already working.
+  const setupNeedsAttention = editingApiUrl || editingKey || !!phoneNotesError || noNotesMatchAnyTab;
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const showSettingsBlocks = settingsExpanded || setupNeedsAttention;
   const ACHIEVEMENTS = ["EE", "ME", "AE", "NS"];
   const TABS = [
     { key: "literacy" as const, label: "📚 Literacy" },
@@ -740,71 +746,88 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
         </div>
       )}
 
-      {editingApiUrl ? (
-        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", background: C.highlight, borderRadius: "10px", padding: "8px 10px" }}>
-          <span style={{ fontSize: "11px", color: C.muted, whiteSpace: "nowrap" }}>📱 Teacher API URL:</span>
-          <input
-            value={apiUrlInput}
-            onChange={(e) => setApiUrlInput(e.target.value)}
-            placeholder="https://script.google.com/macros/s/.../exec"
-            style={{ ...inputStyle, flex: "1 1 260px", fontSize: "12px", padding: "5px 10px" }}
-            onKeyDown={(e) => e.key === "Enter" && apiUrlInput.trim() && connectApiUrl()}
-          />
-          <button onClick={connectApiUrl} disabled={!apiUrlInput.trim()} style={{ ...btnSage, fontSize: "11px", padding: "5px 12px" }}>Connect</button>
-          {!!getApiUrl() && (
-            <button onClick={() => { setApiUrlInput(getApiUrl()); setEditingApiUrl(false); }} style={{ ...btnGhost, fontSize: "11px", padding: "5px 10px" }}>Cancel</button>
+      {showSettingsBlocks ? (
+        <>
+          {!setupNeedsAttention && (
+            <button onClick={() => setSettingsExpanded(false)} style={{ ...linkStyle, alignSelf: "flex-start", marginLeft: 0 }}>
+              ▲ Hide setup
+            </button>
           )}
-          <span style={{ fontSize: "10.5px", color: C.muted, width: "100%" }}>
-            Same URL as the "Teacher API URL" field on your phone's /teacher page — copy it from there so both devices read the same Google Sheet.
-          </span>
-        </div>
-      ) : phoneNotesLoading ? (
-        <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>Loading phone notes for {selectedStudent}…</span>
-      ) : phoneNotesError ? (
-        <span style={{ fontSize: "11px", color: C.roseDark, fontStyle: "italic" }}>
-          ⚠️ Couldn't load phone notes: {phoneNotesError}
-          <button onClick={() => setEditingApiUrl(true)} style={linkStyle}>Change API URL</button>
-        </span>
-      ) : phoneNotes.length === 0 ? (
-        <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
-          📱 No phone notes logged yet for {selectedStudent}.
-          <button onClick={() => setEditingApiUrl(true)} style={linkStyle}>Change API URL</button>
-        </span>
-      ) : noNotesMatchAnyTab ? (
-        <span style={{ fontSize: "11px", color: C.roseDark, fontStyle: "italic" }}>
-          ⚠️ {phoneNotes.length} phone note{phoneNotes.length === 1 ? "" : "s"} loaded for {selectedStudent}, but none are tagged "literacy", "maths", or "uoi" — they won't show under any tab. Subject value{notedSubjects.length === 1 ? "" : "s"} found: {notedSubjects.join(", ") || "(blank)"}.
-        </span>
-      ) : (
-        <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
-          📱 {phoneNotes.length} phone note{phoneNotes.length === 1 ? "" : "s"} loaded for {selectedStudent} (subjects: {notedSubjects.join(", ")}) — used automatically in "Generate Draft" and shown below each section.
-          <button onClick={() => setEditingApiUrl(true)} style={linkStyle}>Change API URL</button>
-        </span>
-      )}
+          {editingApiUrl ? (
+            <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", background: C.highlight, borderRadius: "10px", padding: "8px 10px" }}>
+              <span style={{ fontSize: "11px", color: C.muted, whiteSpace: "nowrap" }}>📱 Teacher API URL:</span>
+              <input
+                value={apiUrlInput}
+                onChange={(e) => setApiUrlInput(e.target.value)}
+                placeholder="https://script.google.com/macros/s/.../exec"
+                style={{ ...inputStyle, flex: "1 1 260px", fontSize: "12px", padding: "5px 10px" }}
+                onKeyDown={(e) => e.key === "Enter" && apiUrlInput.trim() && connectApiUrl()}
+              />
+              <button onClick={connectApiUrl} disabled={!apiUrlInput.trim()} style={{ ...btnSage, fontSize: "11px", padding: "5px 12px" }}>Connect</button>
+              {!!getApiUrl() && (
+                <button onClick={() => { setApiUrlInput(getApiUrl()); setEditingApiUrl(false); }} style={{ ...btnGhost, fontSize: "11px", padding: "5px 10px" }}>Cancel</button>
+              )}
+              <span style={{ fontSize: "10.5px", color: C.muted, width: "100%" }}>
+                Same URL as the "Teacher API URL" field on your phone's /teacher page — copy it from there so both devices read the same Google Sheet.
+              </span>
+            </div>
+          ) : phoneNotesLoading ? (
+            <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>Loading phone notes for {selectedStudent}…</span>
+          ) : phoneNotesError ? (
+            <span style={{ fontSize: "11px", color: C.roseDark, fontStyle: "italic" }}>
+              ⚠️ Couldn't load phone notes: {phoneNotesError}
+              <button onClick={() => setEditingApiUrl(true)} style={linkStyle}>Change API URL</button>
+            </span>
+          ) : phoneNotes.length === 0 ? (
+            <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
+              📱 No phone notes logged yet for {selectedStudent}.
+              <button onClick={() => setEditingApiUrl(true)} style={linkStyle}>Change API URL</button>
+            </span>
+          ) : noNotesMatchAnyTab ? (
+            <span style={{ fontSize: "11px", color: C.roseDark, fontStyle: "italic" }}>
+              ⚠️ {phoneNotes.length} phone note{phoneNotes.length === 1 ? "" : "s"} loaded for {selectedStudent}, but none are tagged "literacy", "maths", or "uoi" — they won't show under any tab. Subject value{notedSubjects.length === 1 ? "" : "s"} found: {notedSubjects.join(", ") || "(blank)"}.
+            </span>
+          ) : (
+            <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
+              📱 {phoneNotes.length} phone note{phoneNotes.length === 1 ? "" : "s"} loaded for {selectedStudent} (subjects: {notedSubjects.join(", ")}) — used automatically in "Generate Draft" and shown below each section.
+              <button onClick={() => setEditingApiUrl(true)} style={linkStyle}>Change API URL</button>
+            </span>
+          )}
 
-      {editingKey ? (
-        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", background: C.highlight, borderRadius: "10px", padding: "8px 10px" }}>
-          <span style={{ fontSize: "11px", color: C.muted, whiteSpace: "nowrap" }}>✨ Gemini API Key:</span>
-          <input
-            type="password"
-            value={keyInput}
-            onChange={(e) => setKeyInput(e.target.value)}
-            placeholder="AIza..."
-            style={{ ...inputStyle, flex: "1 1 220px", fontSize: "12px", padding: "5px 10px" }}
-            onKeyDown={(e) => e.key === "Enter" && keyInput.trim() && saveGeminiKey()}
-          />
-          <button onClick={saveGeminiKey} disabled={!keyInput.trim()} style={{ ...btnSage, fontSize: "11px", padding: "5px 12px" }}>Save</button>
-          {!!geminiKey && (
-            <button onClick={() => { setKeyInput(geminiKey); setEditingKey(false); }} style={{ ...btnGhost, fontSize: "11px", padding: "5px 10px" }}>Cancel</button>
+          {editingKey ? (
+            <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", background: C.highlight, borderRadius: "10px", padding: "8px 10px" }}>
+              <span style={{ fontSize: "11px", color: C.muted, whiteSpace: "nowrap" }}>✨ Gemini API Key:</span>
+              <input
+                type="password"
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+                placeholder="AIza..."
+                style={{ ...inputStyle, flex: "1 1 220px", fontSize: "12px", padding: "5px 10px" }}
+                onKeyDown={(e) => e.key === "Enter" && keyInput.trim() && saveGeminiKey()}
+              />
+              <button onClick={saveGeminiKey} disabled={!keyInput.trim()} style={{ ...btnSage, fontSize: "11px", padding: "5px 12px" }}>Save</button>
+              {!!geminiKey && (
+                <button onClick={() => { setKeyInput(geminiKey); setEditingKey(false); }} style={{ ...btnGhost, fontSize: "11px", padding: "5px 10px" }}>Cancel</button>
+              )}
+              <span style={{ fontSize: "10.5px", color: C.muted, width: "100%" }}>
+                Required for "✨ Generate Draft" — free to get at aistudio.google.com, no credit card needed. Stored only in this browser's local storage and sent directly from your browser to Google, so only enter it on a device you trust.
+              </span>
+            </div>
+          ) : (
+            <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
+              ✨ Gemini API key connected.
+              <button onClick={() => setEditingKey(true)} style={linkStyle}>Change key</button>
+            </span>
           )}
-          <span style={{ fontSize: "10.5px", color: C.muted, width: "100%" }}>
-            Required for "✨ Generate Draft" — free to get at aistudio.google.com, no credit card needed. Stored only in this browser's local storage and sent directly from your browser to Google, so only enter it on a device you trust.
-          </span>
-        </div>
+        </>
       ) : (
-        <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic" }}>
-          ✨ Gemini API key connected.
-          <button onClick={() => setEditingKey(true)} style={linkStyle}>Change key</button>
-        </span>
+        <button onClick={() => setSettingsExpanded(true)} style={{
+          background: C.highlight, border: `1px solid ${C.cardBorder}`, borderRadius: "10px",
+          padding: "6px 10px", fontSize: "11px", color: C.muted, cursor: "pointer",
+          textAlign: "left", fontFamily: font,
+        }}>
+          ⚙️ {phoneNotes.length} phone note{phoneNotes.length === 1 ? "" : "s"} · ✨ Gemini connected — tap to view setup
+        </button>
       )}
 
       {draftError && (
@@ -829,7 +852,11 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
       {/* LITERACY TAB */}
       {activeTab === "literacy" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <EvidenceList
+            notes={phoneNotes.filter(n => n.subject === "literacy")}
+            onInsert={(text) => updateReport("literacy", "draft", report.literacy.draft ? `${report.literacy.draft}\n${text}` : text)}
+          />
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ ...labelStyle, fontSize: "10px" }}>Achievement:</span>
             {ACHIEVEMENTS.map(a => (
               <button key={a} onClick={() => updateReport("literacy", "achievement", a)}
@@ -844,8 +871,10 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
                 💡 Suggest: {suggestAchievement("literacy")}
               </button>
             )}
+          </div>
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
             <button onClick={() => compileFromNotes("literacy")}
-              style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px", marginLeft: "auto" }}>
+              style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px" }}>
               📋 Compile from Notes (free)
             </button>
             <button onClick={() => generateDraft("literacy")} disabled={generating.literacy}
@@ -857,10 +886,6 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
               {generating.batch_literacy ? "✨ Generating class..." : "✨ Generate for Whole Class"}
             </button>
           </div>
-          <EvidenceList
-            notes={phoneNotes.filter(n => n.subject === "literacy")}
-            onInsert={(text) => updateReport("literacy", "draft", report.literacy.draft ? `${report.literacy.draft}\n${text}` : text)}
-          />
           <textarea value={report.literacy.draft} onChange={e => updateReport("literacy", "draft", e.target.value)}
             placeholder="Click 'Generate Draft' or type directly..."
             style={{ ...inputStyle, minHeight: "160px", resize: "vertical", fontSize: "14px", lineHeight: 1.7 }} />
@@ -890,7 +915,11 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
       {/* MATHS TAB */}
       {activeTab === "maths" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <EvidenceList
+            notes={phoneNotes.filter(n => n.subject === "maths")}
+            onInsert={(text) => updateReport("maths", "draft", report.maths.draft ? `${report.maths.draft}\n${text}` : text)}
+          />
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ ...labelStyle, fontSize: "10px" }}>Achievement:</span>
             {ACHIEVEMENTS.map(a => (
               <button key={a} onClick={() => updateReport("maths", "achievement", a)}
@@ -905,8 +934,10 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
                 💡 Suggest: {suggestAchievement("maths")}
               </button>
             )}
+          </div>
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
             <button onClick={() => compileFromNotes("maths")}
-              style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px", marginLeft: "auto" }}>
+              style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px" }}>
               📋 Compile from Notes (free)
             </button>
             <button onClick={() => generateDraft("maths")} disabled={generating.maths}
@@ -918,10 +949,6 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
               {generating.batch_maths ? "✨ Generating class..." : "✨ Generate for Whole Class"}
             </button>
           </div>
-          <EvidenceList
-            notes={phoneNotes.filter(n => n.subject === "maths")}
-            onInsert={(text) => updateReport("maths", "draft", report.maths.draft ? `${report.maths.draft}\n${text}` : text)}
-          />
           <textarea value={report.maths.draft} onChange={e => updateReport("maths", "draft", e.target.value)}
             placeholder="Click 'Generate Draft' or type directly..."
             style={{ ...inputStyle, minHeight: "160px", resize: "vertical", fontSize: "14px", lineHeight: 1.7 }} />
@@ -951,22 +978,6 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
       {/* UOI TAB */}
       {activeTab === "uoi" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            <span style={{ ...labelStyle, fontSize: "10px" }}>Overall Achievement:</span>
-            {ACHIEVEMENTS.map(a => (
-              <button key={a} onClick={() => updateReport("uoi", "achievement", a)}
-                style={{ ...btnBase, padding: "4px 12px", fontSize: "12px", borderRadius: "8px",
-                  background: report.uoi.achievement === a ? C.slate : C.bg,
-                  color: report.uoi.achievement === a ? "#fff" : C.text,
-                  border: `1px solid ${C.cardBorder}` }}>{a}</button>
-            ))}
-            {suggestAchievement("uoi") && (
-              <button onClick={() => updateReport("uoi", "achievement", suggestAchievement("uoi")!)}
-                style={{ ...btnGhost, padding: "4px 10px", fontSize: "11px" }}>
-                💡 Suggest: {suggestAchievement("uoi")}
-              </button>
-            )}
-          </div>
           {[0, 1, 2].map(i => (
             <div key={i} style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", background: C.highlight, borderRadius: "12px" }}>
               <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
@@ -992,14 +1003,6 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
                   <option value="">📥 Load preset...</option>
                   {Object.keys(themePresets).map(key => <option key={key} value={key}>{key}</option>)}
                 </select>
-                <button onClick={() => compileUoiFromNotes(i)}
-                  style={{ ...btnGhost, padding: "6px 12px", fontSize: "11px", whiteSpace: "nowrap" }}>
-                  📋 Compile (free)
-                </button>
-                <button onClick={() => generateUoiDraft(i)} disabled={generating[`uoi_${i}`]}
-                  style={{ ...btnSage, padding: "6px 14px", fontSize: "12px", whiteSpace: "nowrap" }}>
-                  {generating[`uoi_${i}`] ? "✨ Generating..." : "✨ Generate"}
-                </button>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
                 {["centralIdea", "loi1", "loi2", "loi3"].slice(0, 3).map((field, fi) => (
@@ -1013,9 +1016,6 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
                     style={{ ...inputStyle, fontSize: "12px", padding: "4px 8px" }} />
                 ))}
               </div>
-              <textarea value={report.uoi.unitDrafts[i] || ""} onChange={e => updateReport("uoi", "unitDraft", e.target.value, i)}
-                placeholder="Generate or type draft for this unit..."
-                style={{ ...inputStyle, minHeight: "120px", resize: "vertical", fontSize: "13px", lineHeight: 1.7 }} />
               {reportData.units[i]?.centralIdea?.trim() ? (
                 <EvidenceList
                   notes={phoneNotes.filter(n => n.subject === "uoi" && n.unitTitle === reportData.units[i]?.centralIdea)}
@@ -1026,8 +1026,37 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
                   Set this unit's Central Idea (or "Load preset...") to match phone notes to it.
                 </span>
               )}
+              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                <button onClick={() => compileUoiFromNotes(i)}
+                  style={{ ...btnGhost, padding: "6px 12px", fontSize: "11px", whiteSpace: "nowrap" }}>
+                  📋 Compile (free)
+                </button>
+                <button onClick={() => generateUoiDraft(i)} disabled={generating[`uoi_${i}`]}
+                  style={{ ...btnSage, padding: "6px 14px", fontSize: "12px", whiteSpace: "nowrap" }}>
+                  {generating[`uoi_${i}`] ? "✨ Generating..." : "✨ Generate"}
+                </button>
+              </div>
+              <textarea value={report.uoi.unitDrafts[i] || ""} onChange={e => updateReport("uoi", "unitDraft", e.target.value, i)}
+                placeholder="Generate or type draft for this unit..."
+                style={{ ...inputStyle, minHeight: "120px", resize: "vertical", fontSize: "13px", lineHeight: 1.7 }} />
             </div>
           ))}
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ ...labelStyle, fontSize: "10px" }}>Overall Achievement:</span>
+            {ACHIEVEMENTS.map(a => (
+              <button key={a} onClick={() => updateReport("uoi", "achievement", a)}
+                style={{ ...btnBase, padding: "4px 12px", fontSize: "12px", borderRadius: "8px",
+                  background: report.uoi.achievement === a ? C.slate : C.bg,
+                  color: report.uoi.achievement === a ? "#fff" : C.text,
+                  border: `1px solid ${C.cardBorder}` }}>{a}</button>
+            ))}
+            {suggestAchievement("uoi") && (
+              <button onClick={() => updateReport("uoi", "achievement", suggestAchievement("uoi")!)}
+                style={{ ...btnGhost, padding: "4px 10px", fontSize: "11px" }}>
+                💡 Suggest: {suggestAchievement("uoi")}
+              </button>
+            )}
+          </div>
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button onClick={() => generateGrowthAreas("uoi")} disabled={generating.growth_uoi}
               style={{ ...btnGhost, padding: "4px 12px", fontSize: "11px" }}>
@@ -1054,7 +1083,12 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
       {/* SEL TAB */}
       {activeTab === "sel" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <EvidenceList
+            notes={phoneNotes}
+            showSubject
+            onInsert={(text) => updateReport("sel", "draft", report.sel.draft ? `${report.sel.draft}\n${text}` : text)}
+          />
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ ...labelStyle, fontSize: "10px" }}>Achievement:</span>
             {ACHIEVEMENTS.map(a => (
               <button key={a} onClick={() => updateReport("sel", "achievement", a)}
@@ -1069,8 +1103,10 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
                 💡 Suggest: {suggestAchievement("sel")}
               </button>
             )}
+          </div>
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
             <button onClick={() => compileFromNotes("sel")}
-              style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px", marginLeft: "auto" }}>
+              style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px" }}>
               📋 Compile from Notes (free)
             </button>
             <button onClick={() => generateDraft("sel")} disabled={generating.sel}
@@ -1082,11 +1118,6 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
               {generating.batch_sel ? "✨ Generating class..." : "✨ Generate for Whole Class"}
             </button>
           </div>
-          <EvidenceList
-            notes={phoneNotes}
-            showSubject
-            onInsert={(text) => updateReport("sel", "draft", report.sel.draft ? `${report.sel.draft}\n${text}` : text)}
-          />
           <textarea value={report.sel.draft} onChange={e => updateReport("sel", "draft", e.target.value)}
             placeholder="Click 'Generate Draft' or type directly. Based on ATL skills and classroom interactions."
             style={{ ...inputStyle, minHeight: "160px", resize: "vertical", fontSize: "14px", lineHeight: 1.7 }} />
