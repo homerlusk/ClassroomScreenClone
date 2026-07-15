@@ -60,23 +60,23 @@ const linkStyle: React.CSSProperties = {
 };
 
 const WIDGETS = [
-  "timetable", "taskBreakdown", "progressTracker", "clock", "timer", "stopwatch",
-  "notes", "classList", "scoreboard", "dice", "workSymbols", "embedder", "youtubeWidget"
+  "timetable", "taskBreakdown", "clock", "timer", "stopwatch",
+  "notes", "roster", "groups", "scoreboard", "dice", "workSymbols", "embedder", "youtubeWidget"
 ] as const;
 type Widget = typeof WIDGETS[number];
 
 const WIDGET_LABELS: Record<Widget, string> = {
-  timetable: "📅 Timetable Setup", taskBreakdown: "📋 Task Steps",
-  progressTracker: "📊 Progress Tracker", clock: "🕒 Clock", timer: "⏲ Timer",
-  stopwatch: "⏱ Stopwatch", notes: "📝 Notes", classList: "👥 Roster & Groups",
-  scoreboard: "🏆 Scores", dice: "🎲 Dice", workSymbols: "🔇 Work Mode",
+  timetable: "📅 Lesson Set-up", taskBreakdown: "📋 Task Steps",
+  clock: "🕒 Clock", timer: "⏲ Timer",
+  stopwatch: "⏱ Stopwatch", notes: "📝 Notes", roster: "👥 Roster",
+  groups: "🤝 Groups", scoreboard: "🏆 Scores", dice: "🎲 Dice", workSymbols: "🔇 Work Mode",
   embedder: "🔗 Web Embed Link", youtubeWidget: "📺 YouTube Video"
 };
 
 const WIDGET_GROUPS: { label: string; emoji: string; widgets: Widget[] }[] = [
-  { label: "Lesson", emoji: "📚", widgets: ["timetable", "taskBreakdown", "progressTracker", "notes"] },
+  { label: "Lesson", emoji: "📚", widgets: ["timetable", "taskBreakdown", "roster", "notes"] },
   { label: "Content", emoji: "🖥️", widgets: ["embedder", "youtubeWidget"] },
-  { label: "Class Tools", emoji: "👥", widgets: ["workSymbols", "dice", "classList", "scoreboard"] },
+  { label: "Class Tools", emoji: "👥", widgets: ["workSymbols", "dice", "groups", "scoreboard"] },
   { label: "Timers", emoji: "⏱️", widgets: ["clock", "timer", "stopwatch"] },
 ];
 
@@ -206,7 +206,7 @@ function CircleTimer({ pct, minutes, seconds }: { pct: number; minutes: number; 
   const fillColor = pct > 0.5 ? C.sage : pct > 0.2 ? C.amber : C.roses;
   const timeLabel = `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, "0")}`;
   return (
-    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", minHeight: "340px" }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
       <svg width={size} height={size} style={{ display: "block" }}>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={C.cardBorder} strokeWidth={stroke} />
         {pct > 0.001 && (pct >= 0.999
@@ -242,168 +242,6 @@ const WORK_MODES = [
   { id: "group", icon: "👥", label: "Group Work", color: C.slate, bg: "#dce8f5" },
   { id: "free", icon: "🎉", label: "Free Time", color: C.lavender, bg: "#ede8f5" }
 ];
-
-// ── ENHANCED PROGRESS TRACKER ──
-function ProgressTrackerWidget({
-  toggle, headlineLessonId, subjectProfiles, setSubjectProfiles, students
-}: {
-  toggle: (key: Widget) => void;
-  headlineLessonId: string;
-  subjectProfiles: Record<string, SubjectProfile>;
-  setSubjectProfiles: React.Dispatch<React.SetStateAction<Record<string, SubjectProfile>>>;
-  students: Student[];
-}) {
-  const [localLessonId, setLocalLessonId] = useState<string>("");
-  const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
-  const [newNoteText, setNewNoteText] = useState<string>("");
-
-  const resolvedLessonId = localLessonId || headlineLessonId;
-  const resolvedLesson = LESSON_TYPES.find(l => l.id === resolvedLessonId);
-  const resolvedProfile: SubjectProfile = subjectProfiles[resolvedLessonId] || {
-    materials: {}, learningObjective: "", centralIdea: "", loi1: "", loi2: "", loi3: "",
-    activeLoiHighlight: 0, atls: "", subTasks: [], observations: {}, activeTaskId: null
-  };
-
-  const updateObs = (name: string, updates: Partial<StudentObservation>) => {
-    const current = resolvedProfile.observations?.[name] || { status: "none", notes: "" };
-    const updatedObs = { ...(resolvedProfile.observations || {}), [name]: { ...current, ...updates } };
-    setSubjectProfiles(prev => ({
-      ...prev,
-      [resolvedLessonId]: { ...((prev[resolvedLessonId] || resolvedProfile) as SubjectProfile), observations: updatedObs }
-    }));
-  };
-
-  const addAnecdotalNote = (studentName: string) => {
-    if (!newNoteText.trim()) return;
-    const obs = resolvedProfile.observations?.[studentName] || { status: "none", notes: "" };
-    const existing = obs.anecdotalNotes || [];
-    const newNote: AnecdotalNote = { date: new Date().toLocaleDateString(), text: newNoteText.trim() };
-    updateObs(studentName, { anecdotalNotes: [...existing, newNote] });
-    setNewNoteText("");
-  };
-
-  const toggleATL = (studentName: string, skill: ATLSkill) => {
-    const obs = resolvedProfile.observations?.[studentName] || { status: "none", notes: "" };
-    const current = obs.atlTags || [];
-    const updated = current.includes(skill) ? current.filter(s => s !== skill) : [...current, skill];
-    updateObs(studentName, { atlTags: updated });
-  };
-
-  return (
-    <div style={cardStyle}>
-      <button onClick={() => toggle("progressTracker")} style={closeBtn}>×</button>
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "12px" }}>
-        <span style={labelStyle}>📊 Tracking:</span>
-        <select value={resolvedLessonId} onChange={(e) => setLocalLessonId(e.target.value)} style={{ ...inputStyle, width: "auto", flex: 1 }}>
-          <option value="" disabled>-- Select a subject --</option>
-          {LESSON_TYPES.map(lt => <option key={lt.id} value={lt.id}>{lt.label}</option>)}
-        </select>
-        {resolvedLesson && <LessonIcon id={resolvedLesson.id} size={24} />}
-      </div>
-
-      {students.length === 0 ? (
-        <p style={{ color: C.muted, fontStyle: "italic", fontSize: "14px", margin: 0 }}>
-          No students in roster. Open <b>👥 Roster & Groups</b> and add students first.
-        </p>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "500px", overflowY: "auto", paddingRight: "4px" }}>
-          {students.map((student) => {
-            const obs = resolvedProfile.observations?.[student.name] || { status: "none", notes: "" };
-            const statusColor = obs.status === "green" ? C.sage : obs.status === "amber" ? C.amber : obs.status === "red" ? C.roses : C.cardBorder;
-            const isExpanded = expandedStudent === student.name;
-            return (
-              <div key={student.name} style={{ background: C.bg, borderRadius: "10px", border: `2px solid ${statusColor}`, overflow: "hidden" }}>
-                {/* Main row */}
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px" }}>
-                  <span style={{ fontWeight: "600", fontSize: "14px", color: student.present ? C.text : C.muted, minWidth: "90px" }}>
-                    {student.name}{!student.present && <span style={{ color: C.roses }}> (Abs)</span>}
-                  </span>
-                  <input type="text" placeholder="Quick note..." value={obs.notes}
-                    style={{ ...inputStyle, flex: 1, padding: "4px 8px", fontSize: "13px" }}
-                    onChange={(e) => updateObs(student.name, { notes: e.target.value })}
-                  />
-                  <select value={obs.status}
-                    style={{ ...inputStyle, width: "120px", padding: "4px 6px", fontSize: "12px" }}
-                    onChange={(e) => updateObs(student.name, { status: e.target.value as any })}
-                  >
-                    <option value="none">⚪ Not set</option>
-                    <option value="green">🟢 Mastered</option>
-                    <option value="amber">🟡 Progressing</option>
-                    <option value="red">🔴 Support</option>
-                    <option value="absent">❌ Absent</option>
-                  </select>
-                  <button onClick={() => setExpandedStudent(isExpanded ? null : student.name)}
-                    style={{ ...btnGhost, padding: "4px 10px", fontSize: "11px", borderRadius: "8px", whiteSpace: "nowrap" }}>
-                    {isExpanded ? "▲ Less" : "▼ More"}
-                  </button>
-                </div>
-
-                {/* Expanded detail panel */}
-                {isExpanded && (
-                  <div style={{ padding: "12px", borderTop: `1.5px solid ${C.cardBorder}`, display: "flex", flexDirection: "column", gap: "10px", background: "#fff" }}>
-                    {/* Star moment */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      <span style={{ ...labelStyle, fontSize: "10px" }}>⭐ Star Moment</span>
-                      <input type="text" placeholder="A standout achievement this term..."
-                        value={obs.starMoment || ""}
-                        style={{ ...inputStyle, fontSize: "13px", padding: "6px 10px" }}
-                        onChange={(e) => updateObs(student.name, { starMoment: e.target.value })}
-                      />
-                    </div>
-
-                    {/* ATL tags */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      <span style={{ ...labelStyle, fontSize: "10px" }}>ATL Skills Observed</span>
-                      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
-                        {ATL_SKILLS.map(skill => {
-                          const active = (obs.atlTags || []).includes(skill);
-                          return (
-                            <button key={skill} onClick={() => toggleATL(student.name, skill)}
-                              style={{ ...btnBase, padding: "3px 10px", fontSize: "11px", borderRadius: "20px",
-                                background: active ? C.slate : C.bg, color: active ? "#fff" : C.muted,
-                                border: `1px solid ${active ? C.slate : C.cardBorder}` }}>
-                              {skill}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Anecdotal notes */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      <span style={{ ...labelStyle, fontSize: "10px" }}>📋 Anecdotal Notes Log</span>
-                      <div style={{ display: "flex", gap: "6px" }}>
-                        <input type="text" placeholder="Add dated observation..."
-                          value={newNoteText}
-                          style={{ ...inputStyle, flex: 1, fontSize: "13px", padding: "6px 10px" }}
-                          onChange={(e) => setNewNoteText(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && addAnecdotalNote(student.name)}
-                        />
-                        <button onClick={() => addAnecdotalNote(student.name)} style={{ ...btnSage, padding: "6px 12px", fontSize: "12px", borderRadius: "10px" }}>+ Add</button>
-                      </div>
-                      {(obs.anecdotalNotes || []).length > 0 && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px", maxHeight: "100px", overflowY: "auto" }}>
-                          {(obs.anecdotalNotes || []).map((note, i) => (
-                            <div key={i} style={{ display: "flex", gap: "8px", alignItems: "flex-start", fontSize: "12px", padding: "4px 6px", background: C.highlight, borderRadius: "6px" }}>
-                              <span style={{ color: C.muted, whiteSpace: "nowrap", fontWeight: "700" }}>{note.date}</span>
-                              <span style={{ color: C.text, flex: 1 }}>{note.text}</span>
-                              <button onClick={() => updateObs(student.name, { anecdotalNotes: (obs.anecdotalNotes || []).filter((_, idx) => idx !== i) })}
-                                style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: "12px" }}>×</button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── REPORT DRAFTING PANEL ──
 // Shows the raw notes a teacher captured on the /teacher phone view for a given
@@ -1310,7 +1148,7 @@ export default function App() {
     catch { return DEFAULT_THEME_PRESETS; }
   });
   const [widgetSpan, setWidgetSpan] = useState<Partial<Record<Widget, boolean>>>({
-    embedder: true, youtubeWidget: true, notes: false, progressTracker: true, taskBreakdown: true,
+    embedder: true, youtubeWidget: true, notes: false, taskBreakdown: true,
   });
   const [reportData, setReportData] = useState<ReportData>(() => {
     try { return JSON.parse(localStorage.getItem("reportData") || "null") || { units: [{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""},{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""},{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""}], studentReports: {} }; }
@@ -1331,8 +1169,8 @@ export default function App() {
   const [confirmClearActive, setConfirmClearActive] = useState<boolean>(false);
   const [presentationMode, setPresentationMode] = useState<boolean>(() => localStorage.getItem("presentationMode") === "1");
   const [visible, setVisible] = useState<Record<Widget, boolean>>({
-    timetable: true, taskBreakdown: false, progressTracker: false, clock: false, timer: false,
-    stopwatch: false, notes: false, classList: false, scoreboard: false, dice: false,
+    timetable: true, taskBreakdown: false, clock: false, timer: false,
+    stopwatch: false, notes: false, roster: false, groups: false, scoreboard: false, dice: false,
     workSymbols: false, embedder: false, youtubeWidget: false
   });
 const playTimerChime = () => {
@@ -1413,9 +1251,6 @@ const playTimerChime = () => {
       setShowReportPanel(false);
       setActiveGroupMenu(null);
       setConfirmClearActive(false);
-      // Per-student assessment data shouldn't be projected to the whole class,
-      // so this widget is hidden (not just locked) while presenting.
-      setVisible((v) => (v.progressTracker ? { ...v, progressTracker: false } : v));
     }
   }, [presentationMode]);
 
@@ -1673,7 +1508,7 @@ return (
                           <span>{WIDGET_LABELS[wKey].split(" ").slice(1).join(" ")}</span>
                           <span>{visible[wKey] ? "🟢" : "⚪"}</span>
                         </button>
-                        {visible[wKey] && (
+                        {visible[wKey] && wKey !== "timetable" && (
                           <div style={{ display: "flex", gap: "4px", paddingLeft: "12px", paddingBottom: "4px" }}>
                             {["Half", "Full"].map((size) => {
                               const isFull = size === "Full";
@@ -1908,13 +1743,6 @@ return (
             </div>
           )}
 
-          {/* PROGRESS TRACKER */}
-          {visible.progressTracker && (
-            <div style={{ gridColumn: widgetSpan.progressTracker ? "span 2" : "span 1" }}>
-              <ProgressTrackerWidget students={students} subjectProfiles={subjectProfiles} setSubjectProfiles={setSubjectProfiles} headlineLessonId={headlineLessonId} toggle={toggle} />
-            </div>
-          )}
-
           {/* EMBEDDER */}
           {visible.embedder && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.embedder ? "span 2" : "span 1", background: "#fff", border: "2px solid #000" }}>
@@ -1947,9 +1775,9 @@ return (
             </div>
           )}
 
-          {/* TIMETABLE SETUP */}
+          {/* LESSON SET-UP (always full width — has enough content that half-width cramped it) */}
           {visible.timetable && (
-            <div style={{ ...cardStyle, gridColumn: widgetSpan.timetable ? "span 2" : "span 1" }}>
+            <div style={{ ...cardStyle, gridColumn: "span 2" }}>
               {!presentationMode && <button style={closeBtn} onClick={() => toggle("timetable")}>×</button>}
               <div style={{ background: C.highlight, padding: "12px", borderRadius: "14px", display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginTop: "12px" }}>
                 <select onChange={(e: React.ChangeEvent<HTMLSelectElement>) => loadTemplate(e.target.value)} defaultValue="" style={{ ...inputStyle, width: "auto", flex: 1, padding: "6px 10px", fontSize: "14px" }}>
@@ -2051,10 +1879,10 @@ return (
             </div>
           )}
 
-          {/* CLASS ROSTER */}
-          {visible.classList && (
-            <div style={{ ...cardStyle, gridColumn: widgetSpan.classList ? "span 2" : "span 1" }}>
-              {!presentationMode && <button style={closeBtn} onClick={() => toggle("classList")}>×</button>}
+          {/* ROSTER */}
+          {visible.roster && (
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.roster ? "span 2" : "span 1" }}>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("roster")}>×</button>}
               <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
                 <input value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="Name…"
                   onKeyDown={(e) => { if (e.key === "Enter" && studentName.trim()) { e.preventDefault(); setStudents([...students, { name: studentName.trim(), present: true, pronoun: "they" }]); setStudentName(""); } }}
@@ -2067,25 +1895,7 @@ return (
                   <input type="file" accept=".txt" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = (evt) => { const text = evt.target?.result as string; if (text) { const names = text.split("\n").map(n => n.trim()).filter(n => n.length > 0); if (names.length > 0) setStudents(names.map(name => ({ name, present: true, pronoun: "they" as const }))); } }; reader.readAsText(file); }} />
                 </label>
               </div>
-              <div style={{ background: C.highlight, padding: "12px", borderRadius: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span style={{ fontSize: "13px", fontWeight: "bold" }}>Group Size:</span>
-                  <input type="number" min={2} max={10} value={groupSize} onChange={(e) => setGroupSize(Math.max(2, Number(e.target.value)))} style={{ ...inputStyle, width: "65px", padding: "4px 8px" }} />
-                  <button onClick={generateClassGroups} style={{ ...btnSage, padding: "6px 14px", fontSize: "12px", borderRadius: "8px", flex: 1 }}>👥 Generate Groups</button>
-                </div>
-                {generatedGroups.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "150px", overflowY: "auto", background: "#fff", padding: "10px", borderRadius: "8px", border: `1.5px solid ${C.cardBorder}` }}>
-                    {generatedGroups.map((grp, gIdx) => (
-                      <div key={gIdx} style={{ fontSize: "13px", fontWeight: "700", color: "#000", borderBottom: "1px solid #f2ede4", paddingBottom: "4px" }}>
-                        Team {gIdx + 1}: <span style={{ fontWeight: "normal", color: C.text }}>{grp.join(", ")}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <button style={{ ...btnAmber, alignSelf: "stretch" }} onClick={() => { const presentOnes = students.filter(s => s.present); if (presentOnes.length > 0) setChosenStudent(presentOnes[Math.floor(Math.random() * presentOnes.length)].name); }}>🎲 PICK RANDOM PRESENT STUDENT</button>
-              {chosenStudent && <div style={{ background: "#dce8f5", padding: "12px", borderRadius: "10px", fontWeight: "800", fontSize: "18px", textAlign: "center" }}>⭐ {chosenStudent}</div>}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", maxHeight: "160px", overflowY: "auto", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "8px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", maxHeight: "220px", overflowY: "auto", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "8px", marginTop: "8px" }}>
                 {students.map((s, i) => (
                   <div key={i} style={{ background: s.present ? C.highlight : "#f5c6c6", border: s.present ? `1px solid ${C.cardBorder}` : `1px solid ${C.roses}`, padding: "4px 8px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px", opacity: s.present ? 1 : 0.6 }}>
                     <input type="checkbox" checked={s.present} onChange={() => setStudents(students.map((st, idx) => idx === i ? { ...st, present: !st.present } : st))} style={{ cursor: "pointer" }} />
@@ -2101,6 +1911,32 @@ return (
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* GROUPS (random picker + team generator — split out from Roster since these
+              are classroom-engagement tools, not roster administration) */}
+          {visible.groups && (
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.groups ? "span 2" : "span 1" }}>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("groups")}>×</button>}
+              <div style={{ background: C.highlight, padding: "12px", borderRadius: "12px", display: "flex", flexDirection: "column", gap: "10px", marginTop: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: "bold" }}>Group Size:</span>
+                  <input type="number" min={2} max={10} value={groupSize} onChange={(e) => setGroupSize(Math.max(2, Number(e.target.value)))} style={{ ...inputStyle, width: "65px", padding: "4px 8px" }} />
+                  <button onClick={generateClassGroups} style={{ ...btnSage, padding: "6px 14px", fontSize: "12px", borderRadius: "8px", flex: 1 }}>👥 Generate Groups</button>
+                </div>
+                {generatedGroups.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "150px", overflowY: "auto", background: "#fff", padding: "10px", borderRadius: "8px", border: `1.5px solid ${C.cardBorder}` }}>
+                    {generatedGroups.map((grp, gIdx) => (
+                      <div key={gIdx} style={{ fontSize: "13px", fontWeight: "700", color: "#000", borderBottom: "1px solid #f2ede4", paddingBottom: "4px" }}>
+                        Team {gIdx + 1}: <span style={{ fontWeight: "normal", color: C.text }}>{grp.join(", ")}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button style={{ ...btnAmber, alignSelf: "stretch", marginTop: "10px" }} onClick={() => { const presentOnes = students.filter(s => s.present); if (presentOnes.length > 0) setChosenStudent(presentOnes[Math.floor(Math.random() * presentOnes.length)].name); }}>🎲 PICK RANDOM PRESENT STUDENT</button>
+              {chosenStudent && <div style={{ background: "#dce8f5", padding: "12px", borderRadius: "10px", fontWeight: "800", fontSize: "18px", textAlign: "center", marginTop: "10px" }}>⭐ {chosenStudent}</div>}
             </div>
           )}
 
