@@ -1628,6 +1628,54 @@ const playTimerChime = () => {
     setExportingDoc(false);
   };
 
+  // Same backend action as exportAllReportsToDoc, just pointed at this week's
+  // planning content instead of per-student report drafts — one Doc "section"
+  // per subject taught this week rather than per student.
+  const exportWeeklySummaryToDoc = async () => {
+    const subjectsWithContent = LESSON_TYPES.filter(lesson => {
+      const profile = subjectProfiles[lesson.id];
+      return profile && (
+        profile.learningObjective?.trim() || profile.subTasks.length > 0 ||
+        profile.centralIdea?.trim() || (profile.observations && Object.keys(profile.observations).length > 0)
+      );
+    });
+    if (subjectsWithContent.length === 0) {
+      setExportDocError("No lesson content captured yet this week — nothing to export.");
+      return;
+    }
+    setExportingDoc(true);
+    setExportDocError("");
+    try {
+      const docSubjects: DocReportStudent[] = subjectsWithContent.map(lesson => {
+        const profile = subjectProfiles[lesson.id]!;
+        const sections: { label: string; text: string }[] = [];
+        if (lesson.id === "uoi") {
+          sections.push({ label: "Guiding Question", text: profile.learningObjective?.trim() || "None mapped." });
+          sections.push({ label: "Central Idea", text: profile.centralIdea?.trim() || "None mapped." });
+          sections.push({ label: "Lines of Inquiry", text: [profile.loi1, profile.loi2, profile.loi3].filter(Boolean).join("\n") || "None mapped." });
+        } else {
+          sections.push({ label: "Learning Objective", text: profile.learningObjective?.trim() || "None mapped." });
+        }
+        if (profile.subTasks.length > 0) {
+          sections.push({ label: "Step Tasks", text: profile.subTasks.map((t, i) => `${i + 1}. ${t.done ? "✓" : "☐"} ${t.text}`).join("\n") });
+        }
+        if (profile.observations && Object.keys(profile.observations).length > 0) {
+          const obsText = Object.entries(profile.observations).map(([name, obs]) => {
+            const status = obs.status === "green" ? "Mastered" : obs.status === "amber" ? "Progressing" : obs.status === "red" ? "Needs support" : "Not tracked";
+            return `${name}: ${status}${obs.notes ? " — " + obs.notes : ""}`;
+          }).join("\n");
+          sections.push({ label: "Observations", text: obsText });
+        }
+        return { name: lesson.label, sections };
+      });
+      const { url: docUrl } = await exportReportsToDoc(docSubjects, `Weekly Summary — ${new Date().toLocaleDateString()}`);
+      window.open(docUrl, "_blank");
+    } catch (e) {
+      setExportDocError(e instanceof Error ? e.message : "Export failed — check that the Apps Script backend has been redeployed with Docs permission granted.");
+    }
+    setExportingDoc(false);
+  };
+
   const showSidebar = timetable.length > 0;
   const weekdayFull = time.toLocaleDateString(undefined, { weekday: "long" }).toUpperCase();
   const monthFull = time.toLocaleDateString(undefined, { month: "long" }).toUpperCase();
@@ -1749,11 +1797,15 @@ return (
                 </button>
                 <button onClick={() => { downloadWeeklySummaryReport(); setActiveGroupMenu(null); }}
                   style={{ ...btnBase, padding: "8px 12px", fontSize: "13px", textAlign: "left", width: "100%", background: "none", borderRadius: "8px", color: C.text }}>
-                  📥 Export Summary
+                  📥 Export Weekly Summary (.txt)
+                </button>
+                <button onClick={() => { exportWeeklySummaryToDoc(); setActiveGroupMenu(null); }} disabled={exportingDoc}
+                  style={{ ...btnBase, padding: "8px 12px", fontSize: "13px", textAlign: "left", width: "100%", background: "none", borderRadius: "8px", color: C.text }}>
+                  {exportingDoc ? "📄 Creating doc..." : "📄 Export Weekly Summary to Doc"}
                 </button>
                 <button onClick={() => { exportAllReportsToDoc(); setActiveGroupMenu(null); }} disabled={exportingDoc}
                   style={{ ...btnBase, padding: "8px 12px", fontSize: "13px", textAlign: "left", width: "100%", background: "none", borderRadius: "8px", color: C.text }}>
-                  {exportingDoc ? "📄 Creating doc..." : "📄 Export All to Google Doc"}
+                  {exportingDoc ? "📄 Creating doc..." : "📄 Export Student Reports to Doc"}
                 </button>
               </div>
             )}
