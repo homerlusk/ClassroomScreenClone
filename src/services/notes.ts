@@ -97,12 +97,12 @@ export async function pushIntentions(
   return post("setIntentions", intentions);
 }
 
-export async function fetchStudents(): Promise<{ name: string; present: boolean }[]> {
+export async function fetchStudents(): Promise<{ name: string; present: boolean; pronoun?: string }[]> {
   const data = await get("students");
   return data.students;
 }
 
-export async function pushStudents(students: { name: string; present: boolean }[]) {
+export async function pushStudents(students: { name: string; present: boolean; pronoun?: string }[]) {
   return post("setStudents", { students });
 }
 
@@ -116,4 +116,30 @@ export async function fetchActiveSubject(): Promise<{ subject: string; updatedAt
 
 export async function pushActiveSubject(subject: string) {
   return post("setActiveSubject", { subject });
+}
+
+// Generic backup store — timetable, theme presets, and report drafts get
+// serialized to JSON and pushed under their own key, so they survive a
+// cleared browser or a switch to a new device, not just the phone's notes.
+export async function fetchAppConfig(): Promise<Record<string, string>> {
+  const data = await get("appConfig");
+  return data.config || {};
+}
+
+export async function pushAppConfig(key: string, value: string) {
+  return post("setAppConfig", { key, value });
+}
+
+export interface DocReportSection {
+  label: string;
+  text: string;
+}
+export interface DocReportStudent {
+  name: string;
+  sections: DocReportSection[];
+}
+
+export async function exportReportsToDoc(students: DocReportStudent[], title?: string): Promise<{ url: string; id: string }> {
+  const data = await post("exportReportsToDoc", { students, title });
+  return { url: data.url, id: data.id };
 }

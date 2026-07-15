@@ -135,6 +135,23 @@ function useSpeechToText(onResult: (text: string) => void) {
   return { start, listening, supported };
 }
 
+// ── OFFLINE QUEUE ──
+// If a save fails (dropped wifi, dead classroom dead-zone, etc.) the observation
+// is queued locally instead of just being lost. It's retried automatically
+// whenever the browser comes back online or the regular 20s poll fires.
+type QueuedNote = {
+  date: string; week: string; studentName: string; subject: string;
+  unitTitle: string; learningIntention: string; tags: string[]; text: string;
+  queuedAt: string;
+};
+
+function getQueue(): QueuedNote[] {
+  try { return JSON.parse(localStorage.getItem("pendingNotesQueue") || "[]"); } catch { return []; }
+}
+function setQueueStorage(q: QueuedNote[]) {
+  localStorage.setItem("pendingNotesQueue", JSON.stringify(q));
+}
+
 export default function Teacher() {
   const [apiUrlInput, setApiUrlInput] = useState(getApiUrl());
   const [connected, setConnected] = useState(!!getApiUrl());
@@ -157,6 +174,27 @@ export default function Teacher() {
   const [showMoreTags, setShowMoreTags] = useState(false);
   const [tagHintDismissed, setTagHintDismissed] = useState(() => localStorage.getItem("tagHintDismissed") === "1");
   const [showRecent, setShowRecent] = useState(false);
+  const [queueCount, setQueueCount] = useState(() => getQueue().length);
+  const [queuedFlash, setQueuedFlash] = useState(false);
+  const [flushing, setFlushing] = useState(false);
+
+  async function flushQueue() {
+    const queue = getQueue();
+    if (queue.length === 0 || flushing) return;
+    setFlushing(true);
+    const remaining: QueuedNote[] = [];
+    for (const item of queue) {
+      try {
+        const { queuedAt, ...payload } = item;
+        await addNote(payload);
+      } catch {
+        remaining.push(item);
+      }
+    }
+    setQueueStorage(remaining);
+    setQueueCount(remaining.length);
+    setFlushing(false);
+  }
   // Which reason chip was just picked, kept visible briefly so the save is
   // unmistakable before the panel closes — closing instantly made it unclear
   // whether the tap actually registered.
@@ -198,15 +236,21 @@ export default function Teacher() {
   useEffect(() => {
     if (!getApiUrl()) return;
     refreshAll();
+    flushQueue();
 
-    const interval = setInterval(refreshAll, 20000);
+    const interval = setInterval(() => { refreshAll(); flushQueue(); }, 20000);
 
-    const onVisible = () => { if (document.visibilityState === "visible") refreshAll(); };
+    const onVisible = () => { if (document.visibilityState === "visible") { refreshAll(); flushQueue(); } };
     document.addEventListener("visibilitychange", onVisible);
+
+    // The browser fires this the moment connectivity actually comes back —
+    // no need to wait for the next 20s poll to retry queued notes.
+    window.addEventListener("online", flushQueue);
 
     return () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", flushQueue);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -262,18 +306,19 @@ export default function Teacher() {
       return;
     }
     setSaving(true);
+    const now = new Date();
+    const payload = {
+      date: now.toISOString().slice(0, 10),
+      week: isoWeek(now),
+      studentName: selectedStudent,
+      subject,
+      unitTitle: currentIntention?.centralIdea || "",
+      learningIntention: learningIntentionSummary,
+      tags: tag ? [tag] : [],
+      text,
+    };
     try {
-      const now = new Date();
-      await addNote({
-        date: now.toISOString().slice(0, 10),
-        week: isoWeek(now),
-        studentName: selectedStudent,
-        subject,
-        unitTitle: currentIntention?.centralIdea || "",
-        learningIntention: learningIntentionSummary,
-        tags: tag ? [tag] : [],
-        text,
-      });
+      await addNote(payload);
       setFreeText("");
       setSavedFlash(true);
       if (tag) {
@@ -288,7 +333,23 @@ export default function Teacher() {
         setSelectedStudent("");
       }, 1200);
     } catch (err) {
-      setConnectionError(err instanceof Error ? err.message : "Save failed");
+      // Don't just lose the observation — queue it locally and keep going.
+      // From the teacher's point of view this IS captured, it just hasn't
+      // reached the sheet yet, so the flow continues as if it succeeded.
+      const queue = getQueue();
+      queue.push({ ...payload, queuedAt: now.toISOString() });
+      setQueueStorage(queue);
+      setQueueCount(queue.length);
+      setFreeText("");
+      setQueuedFlash(true);
+      if (tag) {
+        setLastSavedTag(tag);
+        setTimeout(() => setLastSavedTag(null), 900);
+      }
+      setTimeout(() => {
+        setQueuedFlash(false);
+        setSelectedStudent("");
+      }, 1800);
     } finally {
       setSaving(false);
     }
@@ -346,6 +407,15 @@ export default function Teacher() {
           <button style={styles.linkButton} onClick={disconnect}>Change API URL</button>
         </div>
       </div>
+
+      {queueCount > 0 && (
+        <div style={styles.queueBadge}>
+          <span>📡 {queueCount} note{queueCount === 1 ? "" : "s"} waiting to sync</span>
+          <button style={styles.linkButtonInline} onClick={flushQueue} disabled={flushing}>
+            {flushing ? "Syncing…" : "Retry now"}
+          </button>
+        </div>
+      )}
 
       {connectionError && (
         <div style={styles.errorBox}>
@@ -431,8 +501,8 @@ export default function Teacher() {
 
       {selectedStudent && (
         <>
-          <div style={styles.savedBanner}>
-            {savedFlash ? "✓ Saved" : "\u00A0"}
+          <div style={{ ...styles.savedBanner, color: queuedFlash ? "#b8883a" : "#4e7a60" }}>
+            {savedFlash ? "✓ Saved" : queuedFlash ? "📡 Saved offline — will sync automatically" : "\u00A0"}
           </div>
 
           <div style={styles.freeTextRow}>
@@ -586,6 +656,7 @@ const styles: Record<string, React.CSSProperties> = {
   headerRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 },
   linkButton: { background: "none", border: "none", color: "#3d5a80", fontSize: 13, textDecoration: "underline", cursor: "pointer", padding: 4 },
   errorBox: { background: "#f6e6e6", borderRadius: 10, padding: 10, marginBottom: 12, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 },
+  queueBadge: { background: "#f6e6c9", border: "1.5px solid #c99a2e", borderRadius: 10, padding: "8px 10px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 12.5, color: "#5a4415", fontWeight: 600 },
   h1: { fontSize: 22, marginBottom: 8 },
   muted: { color: "#7a7068", fontSize: 14 },
   input: { width: "100%", padding: 12, borderRadius: 10, border: "1.5px solid #d9d2c5", marginBottom: 12, boxSizing: "border-box" },
