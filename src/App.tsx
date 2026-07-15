@@ -1590,17 +1590,26 @@ return (
             style={{ ...btnGhost, fontWeight: "700", fontSize: "13px", padding: "8px 14px", borderRadius: "12px", border: isEditingMaterials ? "1.5px solid #000" : "1.5px dashed #000", background: isEditingMaterials ? C.highlight : "none" }}>
             {isEditingMaterials ? "🔒 Lock Materials" : "🛠️ Desk Setup"}
           </button>
-          <button onClick={() => { setIsEditingPresets(!isEditingPresets); setIsEditingMaterials(false); }}
-            style={{ ...btnGhost, fontWeight: "700", fontSize: "13px", padding: "8px 14px", borderRadius: "12px", border: isEditingPresets ? "1.5px solid #000" : "1.5px dashed #000", background: isEditingPresets ? C.highlight : "none" }}>
-            🌍 Theme Presets
-          </button>
-          <button onClick={() => setShowReportPanel(!showReportPanel)}
-            style={{ ...btnGhost, fontWeight: "700", fontSize: "13px", padding: "8px 14px", borderRadius: "12px", border: showReportPanel ? "1.5px solid #000" : "1.5px dashed #000", background: showReportPanel ? C.highlight : "none" }}>
-            ✏️ Draft Reports
-          </button>
-          <button onClick={downloadWeeklySummaryReport} style={{ ...btnSage, fontSize: "13px", padding: "8px 16px", marginLeft: "auto", background: "#4e7a60" }}>
-            📥 Export Summary
-          </button>
+          <div style={{ position: "relative", marginLeft: "auto" }}>
+            <button onClick={() => setActiveGroupMenu(activeGroupMenu === "Teacher" ? null : "Teacher")}
+              style={{ ...btnGhost, fontSize: "13px", fontWeight: "700", padding: "8px 16px", background: activeGroupMenu === "Teacher" ? C.highlight : C.bg, border: activeGroupMenu === "Teacher" ? "1.5px solid #000" : `1.5px solid ${C.cardBorder}`, borderRadius: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>👩‍🏫</span>
+              <span>Teacher</span>
+              <span style={{ fontSize: "10px", opacity: 0.7 }}>{activeGroupMenu === "Teacher" ? "▲" : "▼"}</span>
+            </button>
+            {activeGroupMenu === "Teacher" && (
+              <div style={{ position: "absolute", top: "45px", right: 0, background: "#fff", border: `1.5px solid ${C.cardBorder}`, borderRadius: "12px", padding: "8px", display: "flex", flexDirection: "column", gap: "4px", boxShadow: "0 6px 16px rgba(0,0,0,0.1)", zIndex: 99, minWidth: "190px" }}>
+                <button onClick={() => { setShowReportPanel(true); setActiveGroupMenu(null); }}
+                  style={{ ...btnBase, padding: "8px 12px", fontSize: "13px", textAlign: "left", width: "100%", background: showReportPanel ? C.highlight : "none", borderRadius: "8px", color: C.text }}>
+                  ✏️ Draft Reports
+                </button>
+                <button onClick={() => { downloadWeeklySummaryReport(); setActiveGroupMenu(null); }}
+                  style={{ ...btnBase, padding: "8px 12px", fontSize: "13px", textAlign: "left", width: "100%", background: "none", borderRadius: "8px", color: C.text }}>
+                  📥 Export Summary
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         )}
 
@@ -1704,7 +1713,15 @@ return (
                 {isUoi && (
                   <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "4px" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      <span style={{ ...labelStyle, fontSize: "11px", color: "#000" }}>💡 Central Idea:</span>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                        <span style={{ ...labelStyle, fontSize: "11px", color: "#000" }}>💡 Central Idea:</span>
+                        {!presentationMode && (
+                          <button onClick={() => { setIsEditingPresets(!isEditingPresets); setIsEditingMaterials(false); }}
+                            style={{ ...btnGhost, fontWeight: "700", fontSize: "11px", padding: "4px 10px", borderRadius: "10px", border: isEditingPresets ? "1.5px solid #000" : "1.5px dashed #000", background: isEditingPresets ? C.highlight : "none" }}>
+                            🌍 Theme Presets
+                          </button>
+                        )}
+                      </div>
                       <textarea
                         value={currentProfile.centralIdea || ""}
                         onChange={(e) => updateProfileField("centralIdea", e.target.value)}
