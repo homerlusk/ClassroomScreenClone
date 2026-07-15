@@ -108,3 +108,10 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* Flashes the Timer widget's card when a countdown hits zero — audio alone
+   is easy to miss over classroom noise or if the tab isn't focused. */
+@keyframes timerFlash {
+  0%, 100% { background-color: #c47b7b; }
+  50% { background-color: #f2ede4; }
+}

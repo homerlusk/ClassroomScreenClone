@@ -1,5 +1,9 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { getApiUrl, setApiUrl, pushIntentions, pushStudents, pushActiveSubject, fetchNotes, type Note } from "./services/notes";
+import {
+  Palette, Dumbbell, Music, Drama, Languages, Globe, Apple, Sandwich, Calculator,
+  SpellCheck, BookOpen, BookMarked, Lightbulb, Library, Search, Brain, Users, Ticket, Pin,
+} from "lucide-react";
 
 const C = {
   bg: "#f2ede4",
@@ -157,28 +161,28 @@ const LESSON_TYPES: LessonType[] = [
   { id: "off", label: "Off Schedule", ...PALETTES.others },
 ];
 
-function LessonIcon({ id, size = 32 }: { id: string; size?: number }) {
-  const style = { fontSize: `${size}px`, lineHeight: 1, display: "inline-block" };
+function LessonIcon({ id, size = 32, color = "#000" }: { id: string; size?: number; color?: string }) {
+  const props = { size, color, strokeWidth: 2 };
   switch (id) {
-    case "art": return <span style={style}>🎨</span>;
-    case "pe": return <span style={style}>🏃‍♂️</span>;
-    case "music": return <span style={style}>🎵</span>;
-    case "drama": return <span style={style}>🎭</span>;
-    case "languages": return <span style={style}>🗣️</span>;
-    case "italian": return <span style={style}>🇮🇹</span>;
-    case "recess": return <span style={style}>🍎</span>;
-    case "lunch": return <span style={style}>🥪</span>;
-    case "maths": return <span style={style}>🔢</span>;
-    case "spelling": return <span style={style}>🔤</span>;
-    case "literacy": return <span style={style}>📚</span>;
-    case "story": return <span style={style}>📖</span>;
-    case "pyp": return <span style={style}>💡</span>;
-    case "library": return <span style={style}>🏫</span>;
-    case "uoi": return <span style={style}>🔍</span>;
-    case "brain": return <span style={style}>🧠</span>;
-    case "assembly": return <span style={style}>👥</span>;
-    case "event": return <span style={style}>🎟️</span>;
-    default: return <span style={style}>📌</span>;
+    case "art": return <Palette {...props} />;
+    case "pe": return <Dumbbell {...props} />;
+    case "music": return <Music {...props} />;
+    case "drama": return <Drama {...props} />;
+    case "languages": return <Languages {...props} />;
+    case "italian": return <Globe {...props} />;
+    case "recess": return <Apple {...props} />;
+    case "lunch": return <Sandwich {...props} />;
+    case "maths": return <Calculator {...props} />;
+    case "spelling": return <SpellCheck {...props} />;
+    case "literacy": return <BookOpen {...props} />;
+    case "story": return <BookMarked {...props} />;
+    case "pyp": return <Lightbulb {...props} />;
+    case "library": return <Library {...props} />;
+    case "uoi": return <Search {...props} />;
+    case "brain": return <Brain {...props} />;
+    case "assembly": return <Users {...props} />;
+    case "event": return <Ticket {...props} />;
+    default: return <Pin {...props} />;
   }
 }
 
