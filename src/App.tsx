@@ -19,7 +19,7 @@ const C = {
   lavender: "#9b8ec4",
 };
 
-const font = "'Century Gothic', 'Trebuchet MS', Arial, sans-serif";
+const font = "'Lexend', 'Century Gothic', 'Trebuchet MS', Arial, sans-serif";
 const TEAM_COLORS = [C.sage, C.slate, C.roses, C.amber, C.lavender];
 
 const ATL_SKILLS = ["Thinking", "Communication", "Social", "Self-management", "Research"] as const;
@@ -873,6 +873,12 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
             )}
           </div>
           <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+            {report.literacy.draft && (
+              <button onClick={() => { if (confirm("Clear this draft? This can't be undone.")) updateReport("literacy", "draft", ""); }}
+                style={{ ...btnGhost, padding: "6px 12px", fontSize: "12px", marginRight: "auto", color: C.roseDark }}>
+                🗑️ Clear
+              </button>
+            )}
             <button onClick={() => compileFromNotes("literacy")}
               style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px" }}>
               📋 Compile from Notes (free)
@@ -936,6 +942,12 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
             )}
           </div>
           <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+            {report.maths.draft && (
+              <button onClick={() => { if (confirm("Clear this draft? This can't be undone.")) updateReport("maths", "draft", ""); }}
+                style={{ ...btnGhost, padding: "6px 12px", fontSize: "12px", marginRight: "auto", color: C.roseDark }}>
+                🗑️ Clear
+              </button>
+            )}
             <button onClick={() => compileFromNotes("maths")}
               style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px" }}>
               📋 Compile from Notes (free)
@@ -1027,6 +1039,12 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
                 </span>
               )}
               <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                {report.uoi.unitDrafts[i] && (
+                  <button onClick={() => { if (confirm("Clear this unit's draft? This can't be undone.")) updateReport("uoi", "unitDraft", "", i); }}
+                    style={{ ...btnGhost, padding: "6px 10px", fontSize: "11px", marginRight: "auto", color: C.roseDark }}>
+                    🗑️ Clear
+                  </button>
+                )}
                 <button onClick={() => compileUoiFromNotes(i)}
                   style={{ ...btnGhost, padding: "6px 12px", fontSize: "11px", whiteSpace: "nowrap" }}>
                   📋 Compile (free)
@@ -1105,6 +1123,12 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
             )}
           </div>
           <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+            {report.sel.draft && (
+              <button onClick={() => { if (confirm("Clear this draft? This can't be undone.")) updateReport("sel", "draft", ""); }}
+                style={{ ...btnGhost, padding: "6px 12px", fontSize: "12px", marginRight: "auto", color: C.roseDark }}>
+                🗑️ Clear
+              </button>
+            )}
             <button onClick={() => compileFromNotes("sel")}
               style={{ ...btnGhost, padding: "6px 14px", fontSize: "12px" }}>
               📋 Compile from Notes (free)

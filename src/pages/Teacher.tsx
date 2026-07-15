@@ -224,7 +224,7 @@ export default function Teacher() {
       .then((allNotes) => {
         const names = new Set(
           allNotes
-            .filter(n => n.subject === subject && n.date === todayStr)
+            .filter(n => n.subject === subject && n.date?.slice(0, 10) === todayStr)
             .map(n => n.studentName)
         );
         setObservedToday(names);
@@ -566,7 +566,7 @@ export default function Teacher() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { maxWidth: 480, margin: "0 auto", padding: 16, fontFamily: "'Century Gothic', 'Trebuchet MS', Arial, sans-serif", color: "#2c2825" },
+  page: { maxWidth: 480, margin: "0 auto", padding: 16, fontFamily: "'Lexend', 'Century Gothic', 'Trebuchet MS', Arial, sans-serif", color: "#2c2825" },
   headerRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 },
   linkButton: { background: "none", border: "none", color: "#3d5a80", fontSize: 13, textDecoration: "underline", cursor: "pointer", padding: 4 },
   errorBox: { background: "#f6e6e6", borderRadius: 10, padding: 10, marginBottom: 12, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 },
@@ -585,10 +585,10 @@ const styles: Record<string, React.CSSProperties> = {
   tagHint: { fontSize: 11.5, color: "#7a7068", fontStyle: "italic", marginBottom: 8, textAlign: "center" },
   intentionLabel: { fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#7a7068", marginBottom: 4 },
   studentGrid: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 },
-  studentChip: { padding: "10px 14px", borderRadius: 20, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer" },
+  studentChip: { padding: "10px 14px", borderRadius: 20, border: "1.5px solid #d9d2c5", background: "#ebe5d9", color: "#2c2825", cursor: "pointer" },
   studentChipActive: { background: "#3d5a80", color: "white", borderColor: "#3d5a80" },
-  studentChipObserved: { opacity: 0.4, background: "#e3ddd0" },
-  studentChipAbsent: { opacity: 0.55, borderStyle: "dashed", fontStyle: "italic" },
+  studentChipObserved: { background: "#e3ddd0", borderColor: "#d3c9b8", color: "#5a5248" },
+  studentChipAbsent: { background: "#f2ede4", borderStyle: "dashed", color: "#7a7068", fontStyle: "italic" },
   observedCount: { fontSize: 11.5, color: "#7a7068", marginBottom: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
   linkButtonInline: { background: "none", border: "none", color: "#3d5a80", fontSize: 11, textDecoration: "underline", cursor: "pointer", padding: 0 },
   moreTagsToggle: { background: "none", border: "none", color: "#7a7068", fontSize: 12, cursor: "pointer", padding: "4px 0", marginBottom: 6, textAlign: "left" },
