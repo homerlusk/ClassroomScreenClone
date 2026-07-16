@@ -132,9 +132,14 @@ export async function pushAppConfig(key: string, value: string) {
 
 // Reads the teacher-maintained "ClassList" tab (read-only — the app never
 // writes to it, so it's always safe to hand-edit directly in Sheets).
-export async function fetchClassList(): Promise<string[]> {
+export interface ClassListEntry {
+  name: string;
+  pronoun?: string;
+}
+
+export async function fetchClassList(): Promise<ClassListEntry[]> {
   const data = await get("classList");
-  return data.names || [];
+  return data.students || [];
 }
 
 export interface DocReportSection {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { getApiUrl, setApiUrl, pushIntentions, pushStudents, pushActiveSubject, fetchNotes, fetchAppConfig, pushAppConfig, fetchStudents, exportReportsToDoc, type Note, type DocReportStudent } from "./services/notes";
+import { getApiUrl, setApiUrl, pushIntentions, pushStudents, pushActiveSubject, fetchNotes, fetchAppConfig, pushAppConfig, fetchStudents, fetchClassList, exportReportsToDoc, type Note, type DocReportStudent } from "./services/notes";
 import {
   Palette, Dumbbell, Music, Drama, Languages, Globe, Apple, Sandwich, Calculator,
   SpellCheck, BookOpen, BookMarked, Lightbulb, Library, Search, Brain, Users, Ticket, Pin,
@@ -1278,6 +1278,8 @@ export default function App() {
     catch { return []; }
   });
   const [studentName, setStudentName] = useState<string>("");
+  const [importingClassList, setImportingClassList] = useState<boolean>(false);
+  const [classListImportError, setClassListImportError] = useState<string>("");
   const [chosenStudent, setChosenStudent] = useState<string>("");
   const [groupSize, setGroupSize] = useState<number>(3);
   const [generatedGroups, setGeneratedGroups] = useState<string[][]>([]);
@@ -1847,6 +1849,53 @@ LITERACY:
     setGeneratingStarter(false);
   };
 
+  // New names get added; pronouns SYNC for everyone (including students
+  // already on the roster) whenever the sheet has a valid value for them.
+  // Present/absent is never touched by import — that's actively managed
+  // day-to-day in the app, so re-importing shouldn't reset anyone's
+  // attendance mark.
+  const importFromClassList = async () => {
+    if (!getApiUrl()) {
+      setClassListImportError("Connect a Teacher API URL first — set it in Draft Reports.");
+      return;
+    }
+    setImportingClassList(true);
+    setClassListImportError("");
+    try {
+      const entries = await fetchClassList();
+      if (entries.length === 0) {
+        setClassListImportError('No names found. Add a "ClassList" tab to your Sheet — column A: name, column B (optional): pronoun.');
+        setImportingClassList(false);
+        return;
+      }
+      const validPronoun = (p?: string): p is "he" | "she" | "they" => p === "he" || p === "she" || p === "they";
+      const entryByName = new Map(entries.map(e => [e.name, e]));
+      let anyChange = false;
+      const updatedExisting = students.map(s => {
+        const entry = entryByName.get(s.name);
+        if (entry && validPronoun(entry.pronoun) && entry.pronoun !== s.pronoun) {
+          anyChange = true;
+          return { ...s, pronoun: entry.pronoun };
+        }
+        return s;
+      });
+      const existingNames = new Set(students.map(s => s.name));
+      const newOnes = entries
+        .filter(e => !existingNames.has(e.name))
+        .map(e => ({ name: e.name, present: true, pronoun: validPronoun(e.pronoun) ? e.pronoun : "they" as const }));
+      if (newOnes.length > 0) anyChange = true;
+      if (!anyChange) {
+        setClassListImportError("Roster and pronouns already match the Class List tab — nothing to update.");
+        setImportingClassList(false);
+        return;
+      }
+      setStudents([...updatedExisting, ...newOnes]);
+    } catch (e) {
+      setClassListImportError(e instanceof Error ? e.message : "Couldn't import the class list.");
+    }
+    setImportingClassList(false);
+  };
+
   const showSidebar = timetable.length > 0;
   const weekdayFull = time.toLocaleDateString(undefined, { weekday: "long" }).toUpperCase();
   const monthFull = time.toLocaleDateString(undefined, { month: "long" }).toUpperCase();
@@ -2407,6 +2456,14 @@ return (
                   <input type="file" accept=".txt" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = (evt) => { const text = evt.target?.result as string; if (text) { const names = text.split("\n").map(n => n.trim()).filter(n => n.length > 0); if (names.length > 0) setStudents(names.map(name => ({ name, present: true, pronoun: "they" as const }))); } }; reader.readAsText(file); }} />
                 </label>
               </div>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1, border: "1px dashed #000" }} disabled={importingClassList} onClick={importFromClassList}>
+                  {importingClassList ? "Importing..." : "📥 Import from Class List tab"}
+                </button>
+              </div>
+              {classListImportError && (
+                <span style={{ fontSize: "11px", color: C.roseDark, fontStyle: "italic" }}>⚠️ {classListImportError}</span>
+              )}
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", maxHeight: "220px", overflowY: "auto", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "8px", marginTop: "8px" }}>
                 {students.map((s, i) => (
                   <div key={i} style={{ background: s.present ? C.highlight : "#f5c6c6", border: s.present ? `1px solid ${C.cardBorder}` : `1px solid ${C.roses}`, padding: "4px 8px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px", opacity: s.present ? 1 : 0.6 }}>
