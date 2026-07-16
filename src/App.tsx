@@ -763,19 +763,6 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
           style={{ ...inputStyle, width: "auto", flex: "0 0 180px", fontSize: "14px", fontWeight: "700" }}>
           {students.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
         </select>
-        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-          <span style={{ fontSize: "12px", color: C.muted }}>Pronouns:</span>
-          {(["he", "she", "they"] as const).map(p => (
-            <button key={p} onClick={() => {
-              setStudents(prev => prev.map(s => s.name === selectedStudent ? { ...s, pronoun: p } : s));
-            }}
-              style={{ ...btnBase, padding: "3px 10px", fontSize: "11px", borderRadius: "20px",
-                background: pronoun === p ? C.text : C.bg, color: pronoun === p ? "#fff" : C.muted,
-                border: `1px solid ${C.cardBorder}` }}>
-              {p}
-            </button>
-          ))}
-        </div>
         <button onClick={() => generateAllSectionsForStudent(selectedStudent)} disabled={!!generating.batch_student || !!batchProgress}
           style={{ ...btnSlate, fontSize: "12px", padding: "6px 14px", marginLeft: "auto" }}>
           {generating.batch_student ? "✨ Generating all..." : `✨ Generate All Sections for ${selectedStudent}`}
@@ -2451,12 +2438,6 @@ return (
                 <button style={btnSlate} onClick={() => { if (studentName.trim()) { setStudents([...students, { name: studentName.trim(), present: true, pronoun: "they" }]); setStudentName(""); } }}>+</button>
               </div>
               <div style={{ display: "flex", gap: "6px" }}>
-                <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1, border: "1px dashed #000" }} onClick={() => { if (students.length === 0) return alert("List is empty!"); const textData = students.map(s => s.name).join("\n"); const blob = new Blob([textData], { type: "text/plain" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "class-list.txt"; link.click(); URL.revokeObjectURL(url); }}>💾 Save File</button>
-                <label style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1, border: "1px dashed #000", textAlign: "center", cursor: "pointer" }}>📂 Load File
-                  <input type="file" accept=".txt" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = (evt) => { const text = evt.target?.result as string; if (text) { const names = text.split("\n").map(n => n.trim()).filter(n => n.length > 0); if (names.length > 0) setStudents(names.map(name => ({ name, present: true, pronoun: "they" as const }))); } }; reader.readAsText(file); }} />
-                </label>
-              </div>
-              <div style={{ display: "flex", gap: "6px" }}>
                 <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1, border: "1px dashed #000" }} disabled={importingClassList} onClick={importFromClassList}>
                   {importingClassList ? "Importing..." : "📥 Import from Class List tab"}
                 </button>
@@ -2469,13 +2450,6 @@ return (
                   <div key={i} style={{ background: s.present ? C.highlight : "#f5c6c6", border: s.present ? `1px solid ${C.cardBorder}` : `1px solid ${C.roses}`, padding: "4px 8px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px", opacity: s.present ? 1 : 0.6 }}>
                     <input type="checkbox" checked={s.present} onChange={() => setStudents(students.map((st, idx) => idx === i ? { ...st, present: !st.present } : st))} style={{ cursor: "pointer" }} />
                     <span style={{ fontWeight: "700", textDecoration: s.present ? "none" : "line-through" }}>{s.name}</span>
-                    {/* Pronoun selector */}
-                    <select value={s.pronoun || "they"} onChange={(e) => setStudents(students.map((st, idx) => idx === i ? { ...st, pronoun: e.target.value as any } : st))}
-                      style={{ fontSize: "10px", background: "none", border: `1px solid ${C.cardBorder}`, borderRadius: "4px", padding: "1px 2px", fontFamily: font, color: C.muted, cursor: "pointer" }}>
-                      <option value="he">he</option>
-                      <option value="she">she</option>
-                      <option value="they">they</option>
-                    </select>
                     <button onClick={() => setStudents(students.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}>×</button>
                   </div>
                 ))}
