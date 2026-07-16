@@ -3,6 +3,7 @@ import { getApiUrl, setApiUrl, pushIntentions, pushStudents, pushActiveSubject, 
 import {
   Palette, Dumbbell, Music, Drama, Languages, Globe, Apple, Sandwich, Calculator,
   SpellCheck, BookOpen, BookMarked, Lightbulb, Library, Search, Brain, Users, Ticket, Pin,
+  ChartBar, RefreshCw,
 } from "lucide-react";
 
 const C = {
@@ -65,7 +66,7 @@ const linkStyle: React.CSSProperties = {
 
 const WIDGETS = [
   "timetable", "taskBreakdown", "clock", "timer", "stopwatch", "morningStarter",
-  "notes", "roster", "groups", "scoreboard", "dice", "workSymbols", "embedder", "youtubeWidget"
+  "notes", "roster", "groups", "scoreboard", "achievementOverview", "dice", "workSymbols", "embedder", "youtubeWidget"
 ] as const;
 type Widget = typeof WIDGETS[number];
 
@@ -73,14 +74,15 @@ const WIDGET_LABELS: Record<Widget, string> = {
   timetable: "📅 Lesson Set-up", taskBreakdown: "📋 Task Steps",
   clock: "🕒 Clock", timer: "⏲ Timer", morningStarter: "🌅 Morning Starter",
   stopwatch: "⏱ Stopwatch", notes: "📝 Notes", roster: "👥 Roster",
-  groups: "🤝 Groups", scoreboard: "🏆 Scores", dice: "🎲 Dice", workSymbols: "🔇 Work Mode",
+  groups: "🤝 Groups", scoreboard: "🏆 Scores", achievementOverview: "Achievement Overview",
+  dice: "🎲 Dice", workSymbols: "🔇 Work Mode",
   embedder: "🔗 Web Embed Link", youtubeWidget: "📺 YouTube Video"
 };
 
 const WIDGET_GROUPS: { label: string; emoji: string; widgets: Widget[] }[] = [
   { label: "Lesson", emoji: "📚", widgets: ["timetable", "taskBreakdown", "morningStarter", "roster", "notes"] },
   { label: "Content", emoji: "🖥️", widgets: ["embedder", "youtubeWidget"] },
-  { label: "Class Tools", emoji: "👥", widgets: ["workSymbols", "dice", "groups", "scoreboard"] },
+  { label: "Class Tools", emoji: "👥", widgets: ["workSymbols", "dice", "groups", "scoreboard", "achievementOverview"] },
   { label: "Timers", emoji: "⏱️", widgets: ["clock", "timer", "stopwatch"] },
 ];
 
@@ -304,6 +306,7 @@ function ReportDraftingPanel({
   const [phoneNotes, setPhoneNotes] = useState<Note[]>([]);
   const [phoneNotesLoading, setPhoneNotesLoading] = useState(false);
   const [phoneNotesError, setPhoneNotesError] = useState<string>("");
+  const [showTimeline, setShowTimeline] = useState<boolean>(false);
   const [apiUrlInput, setApiUrlInput] = useState<string>(getApiUrl());
   const [editingApiUrl, setEditingApiUrl] = useState<boolean>(!getApiUrl());
   const [notesRefreshTick, setNotesRefreshTick] = useState(0);
@@ -340,6 +343,8 @@ function ReportDraftingPanel({
       .finally(() => { if (!cancelled) setPhoneNotesLoading(false); });
     return () => { cancelled = true; };
   }, [selectedStudent, notesRefreshTick]);
+
+  useEffect(() => { setShowTimeline(false); }, [selectedStudent]);
 
   const student = students.find(s => s.name === selectedStudent);
   const pronoun = student?.pronoun || "they";
@@ -690,6 +695,39 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
     return entries[0][0];
   }
 
+  const GRADE_RANK: Record<string, number> = { NS: 1, AE: 2, ME: 3, EE: 4 };
+
+  // Compares the EARLIEST graded note to the MOST RECENT graded note for a
+  // subject — deliberately simple and explainable ("started AE, now EE = up")
+  // rather than a statistical trend line that's harder to justify in a report.
+  // subjectId === "sel" checks across every subject, matching how SEL already
+  // aggregates cross-subject evidence elsewhere in this panel.
+  function computeTrend(subjectId: string): "up" | "down" | "flat" | null {
+    const relevant = subjectId === "sel" ? phoneNotes : phoneNotes.filter(n => n.subject === subjectId);
+    const graded = relevant
+      .map(n => {
+        const tags = (n.tags || "").split(",").map(t => t.trim());
+        const tag = tags.find(t => GRADE_RANK[t] !== undefined);
+        return tag ? { date: n.date || "", rank: GRADE_RANK[tag] } : null;
+      })
+      .filter((x): x is { date: string; rank: number } => x !== null)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    if (graded.length < 2) return null;
+    const first = graded[0].rank;
+    const last = graded[graded.length - 1].rank;
+    if (last > first) return "up";
+    if (last < first) return "down";
+    return "flat";
+  }
+
+  function TrendBadge({ subjectId }: { subjectId: string }) {
+    const trend = computeTrend(subjectId);
+    if (!trend) return null;
+    const color = trend === "up" ? C.sageDark : trend === "down" ? C.roseDark : C.muted;
+    const label = trend === "up" ? "↑ Trending up" : trend === "down" ? "↓ Trending down" : "→ Steady";
+    return <span style={{ fontSize: "11px", fontWeight: 700, color }}>{label}</span>;
+  }
+
   const exportStudentReport = () => {
     let text = `REPORT DRAFT: ${selectedStudent}\nGenerated: ${new Date().toLocaleDateString()}\n`;
     text += `${"=".repeat(60)}\n\n`;
@@ -844,6 +882,26 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
         </div>
       )}
 
+      {phoneNotes.length > 0 && (
+        <div>
+          <button onClick={() => setShowTimeline(v => !v)} style={{ ...btnGhost, fontSize: "11px", padding: "5px 12px", display: "flex", alignItems: "center", gap: "6px" }}>
+            {showTimeline ? "▲ Hide" : "▼ Show"} full timeline for {selectedStudent} ({phoneNotes.length})
+          </button>
+          {showTimeline && (
+            <div style={{ maxHeight: "320px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px", background: C.highlight, borderRadius: "10px", padding: "10px", marginTop: "8px" }}>
+              {phoneNotes.slice().sort((a, b) => (a.date || "").localeCompare(b.date || "")).map(n => (
+                <div key={n.id} style={{ background: "#fff", borderRadius: "8px", padding: "8px 10px", fontSize: "12.5px", lineHeight: 1.5 }}>
+                  <span style={{ color: C.muted, marginRight: "6px" }}>{n.date}</span>
+                  <span style={{ background: C.bg, borderRadius: "6px", padding: "1px 6px", marginRight: "6px", fontSize: "11px", fontWeight: 700, textTransform: "capitalize" }}>{n.subject}</span>
+                  {n.tags && <span style={{ background: C.bg, borderRadius: "6px", padding: "1px 6px", marginRight: "6px", fontSize: "11px", fontWeight: 700 }}>{n.tags}</span>}
+                  {n.text}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Tabs */}
       <div style={{ display: "flex", gap: "6px", borderBottom: `1.5px solid ${C.cardBorder}`, paddingBottom: "8px" }}>
         {TABS.map(tab => (
@@ -865,6 +923,7 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
           />
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ ...labelStyle, fontSize: "10px" }}>Achievement:</span>
+            <TrendBadge subjectId="literacy" />
             {ACHIEVEMENTS.map(a => (
               <button key={a} onClick={() => updateReport("literacy", "achievement", a)}
                 style={{ ...btnBase, padding: "4px 12px", fontSize: "12px", borderRadius: "8px",
@@ -934,6 +993,7 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
           />
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ ...labelStyle, fontSize: "10px" }}>Achievement:</span>
+            <TrendBadge subjectId="maths" />
             {ACHIEVEMENTS.map(a => (
               <button key={a} onClick={() => updateReport("maths", "achievement", a)}
                 style={{ ...btnBase, padding: "4px 12px", fontSize: "12px", borderRadius: "8px",
@@ -1068,6 +1128,7 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
           ))}
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ ...labelStyle, fontSize: "10px" }}>Overall Achievement:</span>
+            <TrendBadge subjectId="uoi" />
             {ACHIEVEMENTS.map(a => (
               <button key={a} onClick={() => updateReport("uoi", "achievement", a)}
                 style={{ ...btnBase, padding: "4px 12px", fontSize: "12px", borderRadius: "8px",
@@ -1115,6 +1176,7 @@ Write exactly two short, specific, actionable growth areas (each under 15 words)
           />
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ ...labelStyle, fontSize: "10px" }}>Achievement:</span>
+            <TrendBadge subjectId="sel" />
             {ACHIEVEMENTS.map(a => (
               <button key={a} onClick={() => updateReport("sel", "achievement", a)}
                 style={{ ...btnBase, padding: "4px 12px", fontSize: "12px", borderRadius: "8px",
@@ -1221,7 +1283,7 @@ export default function App() {
     catch { return DEFAULT_THEME_PRESETS; }
   });
   const [widgetSpan, setWidgetSpan] = useState<Partial<Record<Widget, boolean>>>({
-    embedder: true, youtubeWidget: true, notes: false, taskBreakdown: true, morningStarter: true,
+    embedder: true, youtubeWidget: true, notes: false, taskBreakdown: true, morningStarter: true, achievementOverview: true,
   });
   const [reportData, setReportData] = useState<ReportData>(() => {
     try { return JSON.parse(localStorage.getItem("reportData") || "null") || { units: [{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""},{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""},{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""}], studentReports: {} }; }
@@ -1238,6 +1300,13 @@ export default function App() {
   });
   const [generatingStarter, setGeneratingStarter] = useState<boolean>(false);
   const [starterError, setStarterError] = useState<string>("");
+  // Class-wide RAG distribution per subject, computed from each student's
+  // MOST RECENT graded note (not every note — a student's older NS shouldn't
+  // still count once they've since moved to ME). Manually refreshed rather
+  // than auto-polled, since it's a deliberate "check in on the class" glance.
+  const [achievementData, setAchievementData] = useState<Record<string, Record<string, number>>>({});
+  const [loadingAchievement, setLoadingAchievement] = useState<boolean>(false);
+  const [achievementError, setAchievementError] = useState<string>("");
   const [teams, setTeams] = useState<ScoreTeam[]>([{ id: 1, name: "Team A", score: 0, color: "#2f9e52" }, { id: 2, name: "Team B", score: 0, color: "#2f6fb8" }]);
   const [newTeamName, setNewTeamName] = useState<string>("");
   const [diceValue, setDiceValue] = useState<number>(1);
@@ -1253,7 +1322,7 @@ export default function App() {
   const [presentationMode, setPresentationMode] = useState<boolean>(() => localStorage.getItem("presentationMode") === "1");
   const [visible, setVisible] = useState<Record<Widget, boolean>>({
     timetable: true, taskBreakdown: false, clock: false, timer: false, morningStarter: false,
-    stopwatch: false, notes: false, roster: false, groups: false, scoreboard: false, dice: false,
+    stopwatch: false, notes: false, roster: false, groups: false, scoreboard: false, achievementOverview: false, dice: false,
     workSymbols: false, embedder: false, youtubeWidget: false
   });
 const playTimerChime = () => {
@@ -1773,6 +1842,42 @@ LITERACY:
     setGeneratingStarter(false);
   };
 
+  const VALID_GRADES = ["NS", "AE", "ME", "EE"] as const;
+
+  const refreshAchievementOverview = async () => {
+    if (!getApiUrl()) {
+      setAchievementError("Connect a Teacher API URL first — set it in Draft Reports.");
+      return;
+    }
+    setLoadingAchievement(true);
+    setAchievementError("");
+    try {
+      const allNotes = await fetchNotes();
+      // Most recent graded note per student per subject — an old NS shouldn't
+      // still count once a student has since moved on to ME.
+      const latest: Record<string, Record<string, { grade: string; date: string }>> = {};
+      allNotes.forEach(n => {
+        const tags = (n.tags || "").split(",").map(t => t.trim());
+        const grade = tags.find(t => (VALID_GRADES as readonly string[]).includes(t));
+        if (!grade) return;
+        if (!latest[n.subject]) latest[n.subject] = {};
+        const existing = latest[n.subject][n.studentName];
+        if (!existing || (n.date || "") >= existing.date) {
+          latest[n.subject][n.studentName] = { grade, date: n.date || "" };
+        }
+      });
+      const counts: Record<string, Record<string, number>> = {};
+      Object.entries(latest).forEach(([subject, studentsMap]) => {
+        counts[subject] = { NS: 0, AE: 0, ME: 0, EE: 0 };
+        Object.values(studentsMap).forEach(({ grade }) => { counts[subject][grade]++; });
+      });
+      setAchievementData(counts);
+    } catch (e) {
+      setAchievementError(e instanceof Error ? e.message : "Couldn't load achievement data.");
+    }
+    setLoadingAchievement(false);
+  };
+
   const showSidebar = timetable.length > 0;
   const weekdayFull = time.toLocaleDateString(undefined, { weekday: "long" }).toUpperCase();
   const monthFull = time.toLocaleDateString(undefined, { month: "long" }).toUpperCase();
@@ -2218,6 +2323,63 @@ return (
               ) : (
                 <div style={{ color: C.muted, fontSize: "14px", textAlign: "center", padding: "24px 0" }}>
                   {presentationMode ? "No starter generated yet for today." : "Click \"Generate Today's Starter\" to create today's warm-up."}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ACHIEVEMENT OVERVIEW — aggregate counts only, no student names shown,
+              so unlike the old Progress Tracker this is fine to leave visible in
+              presentation mode. Only the Refresh action hides. */}
+          {visible.achievementOverview && (
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.achievementOverview ? "span 2" : "span 1" }}>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("achievementOverview")}>×</button>}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", marginBottom: "16px" }}>
+                <h2 style={{ margin: 0, fontSize: "22px", fontWeight: "800", display: "flex", alignItems: "center", gap: "10px" }}>
+                  <ChartBar size={26} color="#000" strokeWidth={2} /> Achievement Overview
+                </h2>
+                {!presentationMode && (
+                  <button onClick={refreshAchievementOverview} disabled={loadingAchievement} style={{ ...btnGhost, fontSize: "12px", padding: "7px 14px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <RefreshCw size={14} strokeWidth={2} /> {loadingAchievement ? "Loading..." : "Refresh"}
+                  </button>
+                )}
+              </div>
+              {!presentationMode && achievementError && (
+                <div style={{ background: "#f6e6e6", border: `1.5px solid ${C.roses}`, borderRadius: "10px", padding: "8px 12px", fontSize: "12px", color: C.roseDark, marginBottom: "12px" }}>
+                  ⚠️ {achievementError}
+                </div>
+              )}
+              {Object.keys(achievementData).length === 0 ? (
+                <div style={{ color: C.muted, fontSize: "14px", textAlign: "center", padding: "24px 0" }}>
+                  {presentationMode ? "No data loaded yet." : "Click Refresh to load current achievement levels from logged notes."}
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "20px" }}>
+                  {Object.entries(achievementData).filter(([, counts]) => Object.values(counts).some(c => c > 0)).map(([subject, counts]) => {
+                    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+                    const maxCount = Math.max(...Object.values(counts), 1);
+                    return (
+                      <div key={subject}>
+                        <div style={{ fontWeight: "700", fontSize: "14px", marginBottom: "10px", textTransform: "capitalize", color: C.text }}>
+                          {subject} <span style={{ color: C.muted, fontWeight: "400" }}>({total} student{total === 1 ? "" : "s"})</span>
+                        </div>
+                        <div style={{ display: "flex", gap: "10px", alignItems: "flex-end", height: "100px" }}>
+                          {VALID_GRADES.map(grade => {
+                            const count = counts[grade] || 0;
+                            const heightPct = (count / maxCount) * 100;
+                            const gradeColor = grade === "NS" ? "#c0433f" : grade === "AE" ? "#c99a2e" : grade === "ME" ? "#3f8a52" : "#3d6fa5";
+                            return (
+                              <div key={grade} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, height: "100%", justifyContent: "flex-end" }}>
+                                <span style={{ fontSize: "13px", fontWeight: "800", color: gradeColor, marginBottom: "4px" }}>{count}</span>
+                                <div style={{ width: "100%", maxWidth: "48px", height: `${count > 0 ? Math.max(heightPct, 8) : 2}%`, background: gradeColor, borderRadius: "6px 6px 0 0", transition: "height 0.3s ease" }} />
+                                <span style={{ fontSize: "11px", fontWeight: "700", color: C.muted, marginTop: "6px" }}>{grade}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
