@@ -64,21 +64,21 @@ const linkStyle: React.CSSProperties = {
 };
 
 const WIDGETS = [
-  "timetable", "taskBreakdown", "clock", "timer", "stopwatch",
+  "timetable", "taskBreakdown", "clock", "timer", "stopwatch", "morningStarter",
   "notes", "roster", "groups", "scoreboard", "dice", "workSymbols", "embedder", "youtubeWidget"
 ] as const;
 type Widget = typeof WIDGETS[number];
 
 const WIDGET_LABELS: Record<Widget, string> = {
   timetable: "📅 Lesson Set-up", taskBreakdown: "📋 Task Steps",
-  clock: "🕒 Clock", timer: "⏲ Timer",
+  clock: "🕒 Clock", timer: "⏲ Timer", morningStarter: "🌅 Morning Starter",
   stopwatch: "⏱ Stopwatch", notes: "📝 Notes", roster: "👥 Roster",
   groups: "🤝 Groups", scoreboard: "🏆 Scores", dice: "🎲 Dice", workSymbols: "🔇 Work Mode",
   embedder: "🔗 Web Embed Link", youtubeWidget: "📺 YouTube Video"
 };
 
 const WIDGET_GROUPS: { label: string; emoji: string; widgets: Widget[] }[] = [
-  { label: "Lesson", emoji: "📚", widgets: ["timetable", "taskBreakdown", "roster", "notes"] },
+  { label: "Lesson", emoji: "📚", widgets: ["timetable", "taskBreakdown", "morningStarter", "roster", "notes"] },
   { label: "Content", emoji: "🖥️", widgets: ["embedder", "youtubeWidget"] },
   { label: "Class Tools", emoji: "👥", widgets: ["workSymbols", "dice", "groups", "scoreboard"] },
   { label: "Timers", emoji: "⏱️", widgets: ["clock", "timer", "stopwatch"] },
@@ -1221,7 +1221,7 @@ export default function App() {
     catch { return DEFAULT_THEME_PRESETS; }
   });
   const [widgetSpan, setWidgetSpan] = useState<Partial<Record<Widget, boolean>>>({
-    embedder: true, youtubeWidget: true, notes: false, taskBreakdown: true,
+    embedder: true, youtubeWidget: true, notes: false, taskBreakdown: true, morningStarter: true,
   });
   const [reportData, setReportData] = useState<ReportData>(() => {
     try { return JSON.parse(localStorage.getItem("reportData") || "null") || { units: [{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""},{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""},{title:"",centralIdea:"",loi1:"",loi2:"",loi3:""}], studentReports: {} }; }
@@ -1230,6 +1230,14 @@ export default function App() {
   const [showReportPanel, setShowReportPanel] = useState<boolean>(false);
   const [exportingDoc, setExportingDoc] = useState<boolean>(false);
   const [exportDocError, setExportDocError] = useState<string>("");
+  // AI-generated 5-questions-and-a-prompt warm-up kids can start on independently
+  // as they arrive. Grounded in whatever the current Maths/Literacy learning
+  // objectives actually are, when set — otherwise falls back to general review.
+  const [morningStarter, setMorningStarter] = useState<{ date: string; mathsQuestions: string[]; literacyPrompt: string } | null>(() => {
+    try { return JSON.parse(localStorage.getItem("morningStarter") || "null"); } catch { return null; }
+  });
+  const [generatingStarter, setGeneratingStarter] = useState<boolean>(false);
+  const [starterError, setStarterError] = useState<string>("");
   const [teams, setTeams] = useState<ScoreTeam[]>([{ id: 1, name: "Team A", score: 0, color: "#2f9e52" }, { id: 2, name: "Team B", score: 0, color: "#2f6fb8" }]);
   const [newTeamName, setNewTeamName] = useState<string>("");
   const [diceValue, setDiceValue] = useState<number>(1);
@@ -1244,7 +1252,7 @@ export default function App() {
   const [confirmClearActive, setConfirmClearActive] = useState<boolean>(false);
   const [presentationMode, setPresentationMode] = useState<boolean>(() => localStorage.getItem("presentationMode") === "1");
   const [visible, setVisible] = useState<Record<Widget, boolean>>({
-    timetable: true, taskBreakdown: false, clock: false, timer: false,
+    timetable: true, taskBreakdown: false, clock: false, timer: false, morningStarter: false,
     stopwatch: false, notes: false, roster: false, groups: false, scoreboard: false, dice: false,
     workSymbols: false, embedder: false, youtubeWidget: false
   });
@@ -1321,6 +1329,7 @@ const playTimerChime = () => {
   useEffect(() => { localStorage.setItem("youtubeLinkUrl", youtubeUrl); }, [youtubeUrl]);
   useEffect(() => { localStorage.setItem("uoiThemePresetsRegistry", JSON.stringify(themePresets)); }, [themePresets]);
   useEffect(() => { localStorage.setItem("reportData", JSON.stringify(reportData)); }, [reportData]);
+  useEffect(() => { localStorage.setItem("morningStarter", JSON.stringify(morningStarter)); }, [morningStarter]);
 
   // Presentation mode: a one-tap way to hide every teacher/editing control so the
   // shared screen only shows what students need to see. Entering it force-closes
@@ -1674,6 +1683,94 @@ const playTimerChime = () => {
       setExportDocError(e instanceof Error ? e.message : "Export failed — check that the Apps Script backend has been redeployed with Docs permission granted.");
     }
     setExportingDoc(false);
+  };
+
+  // Reuses the same Gemini key set in Draft Reports (both just read the same
+  // localStorage entry) rather than duplicating a whole separate key-management
+  // UI here. Grounded in the current Maths/Literacy learning objectives when
+  // set, so it's a warm-up connected to what's actually being taught, not a
+  // generic worksheet.
+  const generateMorningStarter = async () => {
+    const key = localStorage.getItem("geminiApiKey");
+    if (!key) {
+      setStarterError('Add a Gemini API key first — open Draft Reports and set it there, it\'s shared across the whole app.');
+      return;
+    }
+    setGeneratingStarter(true);
+    setStarterError("");
+    try {
+      // A starter is meant to review what was already taught, not preview
+      // today's not-yet-happened lesson — so this looks backward through the
+      // phone notes for the most recent PRIOR day a subject was taught, using
+      // the learningIntention snapshot each note already carries, rather than
+      // subjectProfiles' live objective (which reflects today, not yesterday).
+      const todayStr = new Date().toISOString().slice(0, 10);
+      let mathsObjective = "";
+      let literacyObjective = "";
+      let mathsDate = "";
+      let literacyDate = "";
+      if (getApiUrl()) {
+        try {
+          const allNotes = await fetchNotes();
+          const mostRecentPrior = (subjectId: string) => {
+            const priorDates = Array.from(new Set(
+              allNotes
+                .filter(n => n.subject === subjectId && n.date?.slice(0, 10) < todayStr && n.learningIntention?.trim())
+                .map(n => n.date!.slice(0, 10))
+            )).sort((a, b) => b.localeCompare(a));
+            if (priorDates.length === 0) return null;
+            const latestDate = priorDates[0];
+            const note = allNotes.find(n => n.subject === subjectId && n.date?.slice(0, 10) === latestDate && n.learningIntention?.trim());
+            return note ? { text: note.learningIntention!.trim(), date: latestDate } : null;
+          };
+          const mathsResult = mostRecentPrior("maths");
+          const literacyResult = mostRecentPrior("literacy");
+          if (mathsResult) { mathsObjective = mathsResult.text; mathsDate = mathsResult.date; }
+          if (literacyResult) { literacyObjective = literacyResult.text; literacyDate = literacyResult.date; }
+        } catch { /* fall through — prompt below handles missing objectives gracefully */ }
+      }
+      const prompt = `You are creating a short "morning starter" review activity for a Grade 5 classroom of 10-year-olds, to complete independently as they arrive, before today's lesson begins. This should REVIEW/recall what was already taught previously — not preview today's new content, since today hasn't been taught yet.
+
+${mathsObjective ? `Maths learning objective from the last lesson (${mathsDate}): ${mathsObjective}` : "No prior maths objective found in the logged notes — use general Grade 5 maths review."}
+${literacyObjective ? `Literacy learning objective from the last lesson (${literacyDate}): ${literacyObjective}` : "No prior literacy objective found in the logged notes — use an engaging general literacy prompt."}
+
+Write:
+1. Exactly 5 short maths practice questions appropriate for Grade 5 that review/recall the objective above, increasing slightly in difficulty. Number them 1 to 5.
+2. One literacy warm-up prompt that reviews/recalls the objective above — a short writing or thinking prompt, one or two sentences.
+
+Respond in EXACTLY this format, with no extra commentary before or after:
+MATHS:
+1. ...
+2. ...
+3. ...
+4. ...
+5. ...
+LITERACY:
+...`;
+      const response = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || `Request failed (${response.status})`);
+      const text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+      const mathsMatch = text.match(/MATHS:([\s\S]*?)LITERACY:/i);
+      const literacyMatch = text.match(/LITERACY:([\s\S]*)$/i);
+      const mathsQuestions = (mathsMatch?.[1] || "")
+        .split("\n").map((l: string) => l.replace(/^\s*\d+\.\s*/, "").trim()).filter(Boolean).slice(0, 5);
+      const literacyPrompt = (literacyMatch?.[1] || "").trim();
+      if (mathsQuestions.length === 0 && !literacyPrompt) {
+        throw new Error("Couldn't read a valid starter from the response — try again.");
+      }
+      setMorningStarter({ date: todayStr, mathsQuestions, literacyPrompt });
+    } catch (e) {
+      setStarterError(e instanceof Error ? e.message : "Something went wrong generating the starter.");
+    }
+    setGeneratingStarter(false);
   };
 
   const showSidebar = timetable.length > 0;
@@ -2078,6 +2175,51 @@ return (
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* MORNING STARTER — content stays visible in presentation mode (it's for
+              the kids), only the Generate button (a creation/editing action) hides. */}
+          {visible.morningStarter && (
+            <div style={{ ...cardStyle, gridColumn: widgetSpan.morningStarter ? "span 2" : "span 1" }}>
+              {!presentationMode && <button style={closeBtn} onClick={() => toggle("morningStarter")}>×</button>}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", marginBottom: "14px" }}>
+                <h2 style={{ margin: 0, fontSize: "24px", fontWeight: "800" }}>🌅 Morning Starter</h2>
+                {!presentationMode && (
+                  <button onClick={generateMorningStarter} disabled={generatingStarter} style={{ ...btnSage, fontSize: "12px", padding: "7px 16px" }}>
+                    {generatingStarter ? "✨ Generating..." : morningStarter?.date === new Date().toISOString().slice(0, 10) ? "✨ Regenerate" : "✨ Generate Today's Starter"}
+                  </button>
+                )}
+              </div>
+              {!presentationMode && starterError && (
+                <div style={{ background: "#f6e6e6", border: `1.5px solid ${C.roses}`, borderRadius: "10px", padding: "8px 12px", fontSize: "12px", color: C.roseDark, marginBottom: "12px" }}>
+                  ⚠️ {starterError}
+                </div>
+              )}
+              {morningStarter && morningStarter.date === new Date().toISOString().slice(0, 10) ? (
+                <div style={{ display: "grid", gridTemplateColumns: morningStarter.mathsQuestions.length && morningStarter.literacyPrompt ? "1.3fr 1fr" : "1fr", gap: "24px" }}>
+                  {morningStarter.mathsQuestions.length > 0 && (
+                    <div>
+                      <div style={{ fontWeight: "800", fontSize: "17px", marginBottom: "10px", color: C.slateDark }}>🔢 Maths Warm-Up</div>
+                      <ol style={{ margin: 0, paddingLeft: "22px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {morningStarter.mathsQuestions.map((q, i) => (
+                          <li key={i} style={{ fontSize: "17px", fontWeight: "600", color: C.text }}>{q}</li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                  {morningStarter.literacyPrompt && (
+                    <div>
+                      <div style={{ fontWeight: "800", fontSize: "17px", marginBottom: "10px", color: C.sageDark }}>📝 Literacy Prompt</div>
+                      <div style={{ fontSize: "17px", fontWeight: "600", fontStyle: "italic", color: C.text, lineHeight: 1.6 }}>{morningStarter.literacyPrompt}</div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ color: C.muted, fontSize: "14px", textAlign: "center", padding: "24px 0" }}>
+                  {presentationMode ? "No starter generated yet for today." : "Click \"Generate Today's Starter\" to create today's warm-up."}
+                </div>
+              )}
             </div>
           )}
 
