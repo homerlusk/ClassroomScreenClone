@@ -202,7 +202,55 @@ export default function Teacher() {
   // Names of students who already have a note logged for today, in the
   // currently active subject — used to grey out the roster so it's easy to
   // see at a glance who hasn't been observed yet.
-  const [observedToday, setObservedToday] = useState<Set<string>>(new Set());
+  const [allNotesCache, setAllNotesCache] = useState<Note[]>([]);
+
+  // Which present students already have a note today, in the current subject.
+  const observedToday = useMemo(() => {
+    if (!subject) return new Set<string>();
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return new Set(
+      allNotesCache
+        .filter(n => n.subject === subject && n.date?.slice(0, 10) === todayStr)
+        .map(n => n.studentName)
+    );
+  }, [allNotesCache, subject]);
+
+  // Days since each student's most recent note, across every subject — not
+  // just today. null means "never observed at all", which is more urgent
+  // than any specific day count.
+  const daysSinceLastObserved = useMemo(() => {
+    const map: Record<string, number | null> = {};
+    students.forEach(s => { map[s.name] = null; });
+    const todayMs = new Date(new Date().toISOString().slice(0, 10)).getTime();
+    allNotesCache.forEach(n => {
+      const dateStr = n.date?.slice(0, 10);
+      if (!dateStr) return;
+      const noteMs = new Date(dateStr).getTime();
+      if (isNaN(noteMs)) return;
+      const days = Math.round((todayMs - noteMs) / 86400000);
+      const existing = map[n.studentName];
+      if (existing === undefined || existing === null || days < existing) {
+        map[n.studentName] = days;
+      }
+    });
+    return map;
+  }, [allNotesCache, students]);
+
+  // Present students who haven't been observed in a while (3+ days, or never)
+  // — ranked worst-first so it's obvious who to prioritize next.
+  const needsAttention = useMemo(() => {
+    return students
+      .filter(s => s.present)
+      .map(s => ({ name: s.name, days: daysSinceLastObserved[s.name] ?? null }))
+      .filter(s => s.days === null || s.days >= 3)
+      .sort((a, b) => {
+        if (a.days === null && b.days === null) return 0;
+        if (a.days === null) return -1;
+        if (b.days === null) return 1;
+        return b.days - a.days;
+      });
+  }, [students, daysSinceLastObserved]);
+  const [showNeedsAttention, setShowNeedsAttention] = useState(false);
 
   const { start: startListening, listening, supported: micSupported } = useSpeechToText(
     (text) => setFreeText((prev) => (prev ? `${prev} ${text}` : text))
@@ -231,6 +279,9 @@ export default function Teacher() {
     } catch (err) {
       setConnectionError(err instanceof Error ? err.message : "Could not connect");
     }
+    // Kept separate from the block above so a notes-fetch hiccup never blocks
+    // the rest of refreshAll (subjects/roster/sync) from updating.
+    fetchNotes().then(setAllNotesCache).catch(() => {});
   }
 
   useEffect(() => {
@@ -264,24 +315,14 @@ export default function Teacher() {
   }, [selectedStudent, savedFlash]);
 
   useEffect(() => {
-    if (!subject) { setObservedToday(new Set()); return; }
-    const todayStr = new Date().toISOString().slice(0, 10);
+    if (!getApiUrl()) { setAllNotesCache([]); return; }
     fetchNotes()
-      .then((allNotes) => {
-        const names = new Set(
-          allNotes
-            .filter(n => n.subject === subject && n.date?.slice(0, 10) === todayStr)
-            .map(n => n.studentName)
-        );
-        setObservedToday(names);
-      })
+      .then(setAllNotesCache)
       .catch((err) => {
-        console.error("Failed to fetch notes for observed-today count:", err);
-        setConnectionError(
-          "Couldn't load today's observed count: " + (err instanceof Error ? err.message : "unknown error")
-        );
+        console.error("Failed to fetch notes cache:", err);
+        setConnectionError("Couldn't load notes: " + (err instanceof Error ? err.message : "unknown error"));
       });
-  }, [subject, savedFlash]);
+  }, [savedFlash, subject]);
 
   useEffect(() => {
     setExpandedGrade(null);
@@ -473,6 +514,24 @@ export default function Teacher() {
             <button style={styles.linkButtonInline} onClick={() => setShowAbsent(a => !a)}>
               {showAbsent ? "Hide" : "Show"} absent ({students.filter(s => !s.present).length})
             </button>
+          )}
+        </div>
+      )}
+
+      {needsAttention.length > 0 && (
+        <div style={styles.attentionBox}>
+          <button style={styles.attentionToggle} onClick={() => setShowNeedsAttention(v => !v)}>
+            {showNeedsAttention ? "▲" : "▼"} ⚠️ {needsAttention.length} {needsAttention.length === 1 ? "student needs" : "students need"} attention
+          </button>
+          {showNeedsAttention && (
+            <div style={styles.attentionList}>
+              {needsAttention.map((s) => (
+                <button key={s.name} style={styles.attentionRow} onClick={() => { setSelectedStudent(s.name); setShowNeedsAttention(false); }}>
+                  <span>{s.name}</span>
+                  <span style={styles.attentionDays}>{s.days === null ? "Never observed" : `${s.days} day${s.days === 1 ? "" : "s"} ago`}</span>
+                </button>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -680,6 +739,11 @@ const styles: Record<string, React.CSSProperties> = {
   observedCount: { fontSize: 11.5, color: "#7a7068", marginBottom: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
   linkButtonInline: { background: "none", border: "none", color: "#3d5a80", fontSize: 11, textDecoration: "underline", cursor: "pointer", padding: 0 },
   moreTagsToggle: { background: "none", border: "none", color: "#7a7068", fontSize: 12, cursor: "pointer", padding: "4px 0", marginBottom: 6, textAlign: "left" },
+  attentionBox: { background: "#f6e6c9", border: "1.5px solid #c99a2e", borderRadius: 10, padding: "8px 10px", marginBottom: 10 },
+  attentionToggle: { background: "none", border: "none", color: "#5a4415", fontSize: 12.5, fontWeight: 700, cursor: "pointer", padding: 0, width: "100%", textAlign: "left" },
+  attentionList: { display: "flex", flexDirection: "column", gap: 4, marginTop: 8 },
+  attentionRow: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", border: "1px solid #e6d6a8", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, color: "#2c2825", cursor: "pointer", textAlign: "left" },
+  attentionDays: { color: "#9e7a1f", fontSize: 11.5, fontWeight: 600 },
   quickTagGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 },
   quickTagButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: 14, borderRadius: 14, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer", fontSize: 13, transition: "all 0.15s ease" },
   ragRow: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 10 },
