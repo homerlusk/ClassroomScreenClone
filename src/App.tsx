@@ -3,6 +3,7 @@ import { getApiUrl, setApiUrl, pushIntentions, pushStudents, pushActiveSubject, 
 import {
   Palette, Dumbbell, Music, Drama, Languages, Globe, Apple, Sandwich, Calculator,
   SpellCheck, BookOpen, BookMarked, Lightbulb, Library, Search, Brain, Users, Ticket, Pin,
+  ClipboardCheck,
 } from "lucide-react";
 
 const C = {
@@ -88,7 +89,8 @@ const WIDGET_GROUPS: { label: string; emoji: string; widgets: Widget[] }[] = [
 const PALETTES = {
   specialists: { color: "#153570", bg: "#c3d8f5" },
   breaks: { color: "#155c30", bg: "#bfeecb" },
-  others: { color: "#0a5487", bg: "#bfe6fa" }
+  others: { color: "#0a5487", bg: "#bfe6fa" },
+  registration: { color: "#7a4a1f", bg: "#f6e6c9" },
 };
 
 interface Presets { centralIdea: string; loi1: string; loi2: string; loi3: string; }
@@ -141,6 +143,7 @@ interface ReportData {
 
 interface LessonType { id: string; label: string; color: string; bg: string; }
 const LESSON_TYPES: LessonType[] = [
+  { id: "registration", label: "Registration", ...PALETTES.registration },
   { id: "art", label: "Art", ...PALETTES.specialists },
   { id: "pe", label: "PE", ...PALETTES.specialists },
   { id: "music", label: "Music", ...PALETTES.specialists },
@@ -165,6 +168,7 @@ const LESSON_TYPES: LessonType[] = [
 function LessonIcon({ id, size = 32, color = "#000" }: { id: string; size?: number; color?: string }) {
   const props = { size, color, strokeWidth: 2 };
   switch (id) {
+    case "registration": return <ClipboardCheck {...props} />;
     case "art": return <Palette {...props} />;
     case "pe": return <Dumbbell {...props} />;
     case "music": return <Music {...props} />;
@@ -1301,6 +1305,12 @@ export default function App() {
   });
   const [generatingStarter, setGeneratingStarter] = useState<boolean>(false);
   const [starterError, setStarterError] = useState<string>("");
+  // "×" on the Registration view hides Morning Starter for just today — stored
+  // as a date string so it naturally re-appears again the next calendar day
+  // without any cleanup needed.
+  const [morningStarterDismissedDate, setMorningStarterDismissedDate] = useState<string | null>(
+    () => localStorage.getItem("morningStarterDismissedDate")
+  );
   const [teams, setTeams] = useState<ScoreTeam[]>([{ id: 1, name: "Team A", score: 0, color: "#2f9e52" }, { id: 2, name: "Team B", score: 0, color: "#2f6fb8" }]);
   const [newTeamName, setNewTeamName] = useState<string>("");
   const [diceValue, setDiceValue] = useState<number>(1);
@@ -1393,6 +1403,10 @@ const playTimerChime = () => {
   useEffect(() => { localStorage.setItem("uoiThemePresetsRegistry", JSON.stringify(themePresets)); }, [themePresets]);
   useEffect(() => { localStorage.setItem("reportData", JSON.stringify(reportData)); }, [reportData]);
   useEffect(() => { localStorage.setItem("morningStarter", JSON.stringify(morningStarter)); }, [morningStarter]);
+  useEffect(() => {
+    if (morningStarterDismissedDate) localStorage.setItem("morningStarterDismissedDate", morningStarterDismissedDate);
+    else localStorage.removeItem("morningStarterDismissedDate");
+  }, [morningStarterDismissedDate]);
 
   // Presentation mode: a one-tap way to hide every teacher/editing control so the
   // shared screen only shows what students need to see. Entering it force-closes
@@ -1883,7 +1897,7 @@ LITERACY:
     setImportingClassList(false);
   };
 
-  const showSidebar = timetable.length > 0;
+  const showSidebar = true; // Registration is always present now, so the sidebar is never truly empty
   const weekdayFull = time.toLocaleDateString(undefined, { weekday: "long" }).toUpperCase();
   const monthFull = time.toLocaleDateString(undefined, { month: "long" }).toUpperCase();
   const dayNum = time.getDate(); const yearNum = time.getFullYear();
@@ -1916,6 +1930,13 @@ return (
             <button onClick={() => setConfirmClearActive(true)} style={{ ...btnGhost, fontSize: "11px", padding: "6px 8px", borderRadius: "10px", width: "100%", whiteSpace: "nowrap" }}>🗑️ Clear All</button>
           ))}
           <div style={{ display: "flex", flexDirection: "column", gap: "14px", width: "100%", alignItems: "center" }}>
+            {/* Always first, always present — not part of the editable timetable list,
+                so Clear All / adding lessons in Lesson Set-up can never remove it. */}
+            <button onClick={() => setHeadlineLessonId("registration")} title="Registration"
+              style={{ background: headlineLessonId === "registration" ? C.highlight : PALETTES.registration.bg, border: headlineLessonId === "registration" ? "3px solid #000" : `2px solid ${PALETTES.registration.color}`, boxShadow: headlineLessonId === "registration" ? "0 0 12px rgba(0,0,0,0.15)" : "none", borderRadius: "14px", width: "68px", height: "68px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxSizing: "border-box", flexShrink: 0 }}>
+              <LessonIcon id="registration" size={32} />
+            </button>
+            {timetable.length > 0 && <div style={{ width: "70%", height: "1.5px", background: C.cardBorder }} />}
             {timetable.map((item) => {
               const lt = LESSON_TYPES.find((l) => l.id === item.lessonId) || LESSON_TYPES[LESSON_TYPES.length - 1];
               const isCurrentHeadline = headlineLessonId === item.lessonId;
@@ -2078,7 +2099,76 @@ return (
         )}
 
         {/* HERO WORKSPACE */}
-        {timetable.length > 0 && activeHeadlineItem && (() => {
+        {activeHeadlineItem && headlineLessonId === "registration" ? (
+          <div style={{ ...cardStyle, background: activeHeadlineItem.bg, border: `2.5px solid ${activeHeadlineItem.color}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "14px", borderBottom: `2px solid ${activeHeadlineItem.color}`, paddingBottom: "18px", marginBottom: "18px" }}>
+              <LessonIcon id="registration" size={48} />
+              <h1 style={{ margin: 0, fontSize: "32px", fontWeight: "800", color: "#000", letterSpacing: "-0.5px", textTransform: "uppercase" }}>Registration</h1>
+            </div>
+            {(() => {
+              const todayStr = new Date().toISOString().slice(0, 10);
+              const dismissedToday = morningStarterDismissedDate === todayStr;
+              if (dismissedToday) {
+                return (
+                  <div style={{ textAlign: "center", padding: "20px 0" }}>
+                    <div style={{ color: C.muted, fontSize: "15px", marginBottom: "10px" }}>Morning Starter hidden for today.</div>
+                    {!presentationMode && (
+                      <button onClick={() => setMorningStarterDismissedDate(null)} style={{ ...btnGhost, fontSize: "12px", padding: "6px 14px" }}>
+                        Show it again
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", marginBottom: "14px" }}>
+                    <span style={{ fontSize: "18px", fontWeight: "800" }}>🌅 Morning Starter</span>
+                    {!presentationMode && (
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button onClick={generateMorningStarter} disabled={generatingStarter} style={{ ...btnSage, fontSize: "12px", padding: "7px 16px" }}>
+                          {generatingStarter ? "✨ Generating..." : morningStarter?.date === todayStr ? "✨ Regenerate" : "✨ Generate Today's Starter"}
+                        </button>
+                        <button onClick={() => setMorningStarterDismissedDate(todayStr)} title="Hide Morning Starter for today" style={{ ...btnGhost, fontSize: "13px", padding: "7px 12px", fontWeight: "800" }}>
+                          ×
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {!presentationMode && starterError && (
+                    <div style={{ background: "#f6e6e6", border: `1.5px solid ${C.roses}`, borderRadius: "10px", padding: "8px 12px", fontSize: "12px", color: C.roseDark, marginBottom: "12px" }}>
+                      ⚠️ {starterError}
+                    </div>
+                  )}
+                  {morningStarter && morningStarter.date === todayStr ? (
+                    <div style={{ display: "grid", gridTemplateColumns: morningStarter.mathsQuestions.length && morningStarter.literacyPrompt ? "1.3fr 1fr" : "1fr", gap: "24px" }}>
+                      {morningStarter.mathsQuestions.length > 0 && (
+                        <div>
+                          <div style={{ fontWeight: "800", fontSize: "17px", marginBottom: "10px", color: C.slateDark }}>🔢 Maths Warm-Up</div>
+                          <ol style={{ margin: 0, paddingLeft: "22px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                            {morningStarter.mathsQuestions.map((q, i) => (
+                              <li key={i} style={{ fontSize: "17px", fontWeight: "600", color: C.text }}>{q}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+                      {morningStarter.literacyPrompt && (
+                        <div>
+                          <div style={{ fontWeight: "800", fontSize: "17px", marginBottom: "10px", color: C.sageDark }}>📝 Literacy Prompt</div>
+                          <div style={{ fontSize: "17px", fontWeight: "600", fontStyle: "italic", color: C.text, lineHeight: 1.6 }}>{morningStarter.literacyPrompt}</div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ color: C.muted, fontSize: "14px", textAlign: "center", padding: "24px 0" }}>
+                      {presentationMode ? "No starter generated yet for today." : "Click \"Generate Today's Starter\" to create today's warm-up."}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        ) : timetable.length > 0 && activeHeadlineItem && (() => {
           const isMaths = headlineLessonId === "maths";
           const isUoi = headlineLessonId === "uoi";
           const mathDate = `${time.getDate().toString().padStart(2, '0')}/${(time.getMonth() + 1).toString().padStart(2, '0')}/${time.getFullYear().toString().slice(-2)}`;
