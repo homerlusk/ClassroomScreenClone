@@ -38,7 +38,7 @@ const REASON_OPTIONS: Record<string, Record<string, string[]>> = {
       "Inconsistent — right sometimes, not others",
       "Needs more practice to solidify",
       "Hesitant to try independently",
-      "Overconfident — may skip steps or rush",
+      "Partial understanding of the concept",
       "Improving, but not yet reliable",
     ],
     ME: [
@@ -55,7 +55,7 @@ const REASON_OPTIONS: Record<string, Record<string, string[]>> = {
       "Applies the concept in new situations",
       "Shows initiative beyond the task",
       "Highly independent",
-      "Problem solving attitude",
+      "Overconfident — may skip steps or rush",
     ],
   },
   maths: {
@@ -89,7 +89,7 @@ const REASON_OPTIONS: Record<string, Record<string, string[]>> = {
       "Applies concept to real-world problems",
       "Extends beyond the task independently",
       "Spots patterns and makes connections",
-      "Problem-solving attitude",
+      "Moves quickly — check depth over speed",
     ],
   },
   sel: {
@@ -259,8 +259,8 @@ export default function Teacher() {
     );
   }, [allNotesCache, subject]);
 
-  // Subjects the "needs attention" reminder actually cares about — Story and
-  // PYP X are excluded on purpose, even though they're loggable subjects.
+  // Subjects the "needs attention" reminder actually cares about — Spelling,
+  // Story, and PYP X are excluded on purpose, even though they're loggable.
   const NEGLECT_TRACKED_SUBJECTS = ["literacy", "maths", "uoi", "sel"];
 
   // Days since each student's most recent note in a TRACKED subject — not
@@ -286,13 +286,13 @@ export default function Teacher() {
     return map;
   }, [allNotesCache, students]);
 
-  // Present students who haven't been observed in a while (4+ days, or never)
+  // Present students who haven't been observed in a while (3+ days, or never)
   // — ranked worst-first so it's obvious who to prioritize next.
   const needsAttention = useMemo(() => {
     return students
       .filter(s => s.present)
       .map(s => ({ name: s.name, days: daysSinceLastObserved[s.name] ?? null }))
-      .filter(s => s.days === null || s.days >= 4)
+      .filter(s => s.days === null || s.days >= 3)
       .sort((a, b) => {
         if (a.days === null && b.days === null) return 0;
         if (a.days === null) return -1;

@@ -2261,8 +2261,10 @@ return (
             </div>
           )}
 
-          {/* LESSON SET-UP (always full width — has enough content that half-width cramped it) */}
-          {visible.timetable && (
+          {/* LESSON SET-UP (always full width — has enough content that half-width cramped it).
+              Hidden entirely while presenting — no need to remember to close it first, and it's
+              back automatically the moment presentation mode ends, no toggle state to manage. */}
+          {visible.timetable && !presentationMode && (
             <div style={{ ...cardStyle, gridColumn: "span 2" }}>
               {!presentationMode && <button style={closeBtn} onClick={() => toggle("timetable")}>×</button>}
               <div style={{ background: C.highlight, padding: "12px", borderRadius: "14px", display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginTop: "12px" }}>
@@ -2444,6 +2446,18 @@ return (
               </div>
               {classListImportError && (
                 <span style={{ fontSize: "11px", color: C.roseDark, fontStyle: "italic" }}>⚠️ {classListImportError}</span>
+              )}
+              {students.length > 0 && (
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1 }}
+                    onClick={() => setStudents(students.map(s => ({ ...s, present: true })))}>
+                    ✓ Mark All Present
+                  </button>
+                  <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1 }}
+                    onClick={() => setStudents(students.map(s => ({ ...s, present: false })))}>
+                    ✕ Mark All Absent
+                  </button>
+                </div>
               )}
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", maxHeight: "220px", overflowY: "auto", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "8px", marginTop: "8px" }}>
                 {students.map((s, i) => (
