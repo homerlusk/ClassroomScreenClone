@@ -38,7 +38,7 @@ const REASON_OPTIONS: Record<string, Record<string, string[]>> = {
       "Inconsistent — right sometimes, not others",
       "Needs more practice to solidify",
       "Hesitant to try independently",
-      "Partial understanding of the concept",
+      "Overconfident — may skip steps or rush",
       "Improving, but not yet reliable",
     ],
     ME: [
@@ -55,7 +55,7 @@ const REASON_OPTIONS: Record<string, Record<string, string[]>> = {
       "Applies the concept in new situations",
       "Shows initiative beyond the task",
       "Highly independent",
-      "Overconfident — may skip steps or rush",
+      "Problem solving attitude",
     ],
   },
   maths: {
@@ -89,7 +89,7 @@ const REASON_OPTIONS: Record<string, Record<string, string[]>> = {
       "Applies concept to real-world problems",
       "Extends beyond the task independently",
       "Spots patterns and makes connections",
-      "Moves quickly — check depth over speed",
+      "Problem-solving attitude",
     ],
   },
   sel: {
@@ -259,34 +259,40 @@ export default function Teacher() {
     );
   }, [allNotesCache, subject]);
 
-  // Days since each student's most recent note, across every subject — not
+  // Subjects the "needs attention" reminder actually cares about — Story and
+  // PYP X are excluded on purpose, even though they're loggable subjects.
+  const NEGLECT_TRACKED_SUBJECTS = ["literacy", "maths", "uoi", "sel"];
+
+  // Days since each student's most recent note in a TRACKED subject — not
   // just today. null means "never observed at all", which is more urgent
   // than any specific day count.
   const daysSinceLastObserved = useMemo(() => {
     const map: Record<string, number | null> = {};
     students.forEach(s => { map[s.name] = null; });
     const todayMs = new Date(new Date().toISOString().slice(0, 10)).getTime();
-    allNotesCache.forEach(n => {
-      const dateStr = n.date?.slice(0, 10);
-      if (!dateStr) return;
-      const noteMs = new Date(dateStr).getTime();
-      if (isNaN(noteMs)) return;
-      const days = Math.round((todayMs - noteMs) / 86400000);
-      const existing = map[n.studentName];
-      if (existing === undefined || existing === null || days < existing) {
-        map[n.studentName] = days;
-      }
-    });
+    allNotesCache
+      .filter(n => NEGLECT_TRACKED_SUBJECTS.includes(n.subject))
+      .forEach(n => {
+        const dateStr = n.date?.slice(0, 10);
+        if (!dateStr) return;
+        const noteMs = new Date(dateStr).getTime();
+        if (isNaN(noteMs)) return;
+        const days = Math.round((todayMs - noteMs) / 86400000);
+        const existing = map[n.studentName];
+        if (existing === undefined || existing === null || days < existing) {
+          map[n.studentName] = days;
+        }
+      });
     return map;
   }, [allNotesCache, students]);
 
-  // Present students who haven't been observed in a while (3+ days, or never)
+  // Present students who haven't been observed in a while (4+ days, or never)
   // — ranked worst-first so it's obvious who to prioritize next.
   const needsAttention = useMemo(() => {
     return students
       .filter(s => s.present)
       .map(s => ({ name: s.name, days: daysSinceLastObserved[s.name] ?? null }))
-      .filter(s => s.days === null || s.days >= 3)
+      .filter(s => s.days === null || s.days >= 4)
       .sort((a, b) => {
         if (a.days === null && b.days === null) return 0;
         if (a.days === null) return -1;
@@ -775,7 +781,7 @@ const styles: Record<string, React.CSSProperties> = {
   primaryButton: { padding: "12px 18px", borderRadius: 10, border: "none", background: "#4e7a60", color: "white", fontWeight: 600, cursor: "pointer" },
   error: { color: "#9e4f4f", fontSize: 13 },
   tabRow: { display: "flex", gap: 8, overflowX: "auto", marginBottom: 12 },
-  tab: { padding: "8px 14px", borderRadius: 20, border: "1.5px solid #d9d2c5", background: "#ebe5d9", whiteSpace: "nowrap", cursor: "pointer", textTransform: "capitalize" },
+  tab: { padding: "8px 14px", borderRadius: 20, border: "1.5px solid #d9d2c5", background: "#ebe5d9", color: "#2c2825", fontWeight: 700, whiteSpace: "nowrap", cursor: "pointer", textTransform: "capitalize" },
   tabActive: { background: "#4e7a60", color: "white", borderColor: "#4e7a60" },
   intentionBanner: { background: "#e8e0cf", borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 14 },
   subjectPrompt: { background: "#f6e6c9", border: "1.5px solid #c99a2e", borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13.5, fontWeight: 600, color: "#5a4415" },
@@ -798,7 +804,7 @@ const styles: Record<string, React.CSSProperties> = {
   attentionRow: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", border: "1px solid #e6d6a8", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, color: "#2c2825", cursor: "pointer", textAlign: "left" },
   attentionDays: { color: "#9e7a1f", fontSize: 11.5, fontWeight: 600 },
   quickTagGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 },
-  quickTagButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: 14, borderRadius: 14, border: "1.5px solid #d9d2c5", background: "#ebe5d9", cursor: "pointer", fontSize: 13, transition: "all 0.15s ease" },
+  quickTagButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: 14, borderRadius: 14, border: "1.5px solid #d9d2c5", background: "#ebe5d9", color: "#2c2825", cursor: "pointer", fontSize: 13, transition: "all 0.15s ease" },
   ragRow: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 10 },
   ragButton: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 6px", borderRadius: 14, border: "2px solid", cursor: "pointer", fontSize: 12, fontWeight: 600, transition: "all 0.15s ease" },
   reasonPanel: { background: "#fff", border: "1.5px solid #d9d2c5", borderRadius: 14, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 },
