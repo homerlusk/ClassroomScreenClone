@@ -66,21 +66,21 @@ const linkStyle: React.CSSProperties = {
 
 const WIDGETS = [
   "timetable", "taskBreakdown", "clock", "timer", "stopwatch", "morningStarter",
-  "notes", "roster", "groups", "scoreboard", "dice", "workSymbols", "embedder", "youtubeWidget"
+  "notes", "groups", "scoreboard", "dice", "workSymbols", "embedder", "youtubeWidget"
 ] as const;
 type Widget = typeof WIDGETS[number];
 
 const WIDGET_LABELS: Record<Widget, string> = {
   timetable: "📅 Lesson Set-up", taskBreakdown: "📋 Task Steps",
   clock: "🕒 Clock", timer: "⏲ Timer", morningStarter: "🌅 Morning Starter",
-  stopwatch: "⏱ Stopwatch", notes: "📝 Notes", roster: "👥 Roster",
+  stopwatch: "⏱ Stopwatch", notes: "📝 Notes",
   groups: "🤝 Groups", scoreboard: "🏆 Scores",
   dice: "🎲 Dice", workSymbols: "🔇 Work Mode",
   embedder: "🔗 Web Embed Link", youtubeWidget: "📺 YouTube Video"
 };
 
 const WIDGET_GROUPS: { label: string; emoji: string; widgets: Widget[] }[] = [
-  { label: "Lesson", emoji: "📚", widgets: ["timetable", "taskBreakdown", "morningStarter", "roster", "notes"] },
+  { label: "Lesson", emoji: "📚", widgets: ["timetable", "taskBreakdown", "morningStarter", "notes"] },
   { label: "Content", emoji: "🖥️", widgets: ["embedder", "youtubeWidget"] },
   { label: "Class Tools", emoji: "👥", widgets: ["workSymbols", "dice", "groups", "scoreboard"] },
   { label: "Timers", emoji: "⏱️", widgets: ["clock", "timer", "stopwatch"] },
@@ -1369,7 +1369,7 @@ export default function App() {
   const [presentationMode, setPresentationMode] = useState<boolean>(() => localStorage.getItem("presentationMode") === "1");
   const [visible, setVisible] = useState<Record<Widget, boolean>>({
     timetable: true, taskBreakdown: false, clock: false, timer: false, morningStarter: false,
-    stopwatch: false, notes: false, roster: false, groups: false, scoreboard: false, dice: false,
+    stopwatch: false, notes: false, groups: false, scoreboard: false, dice: false,
     workSymbols: false, embedder: false, youtubeWidget: false
   });
 const playTimerChime = () => {
@@ -2794,14 +2794,6 @@ return (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.notes ? "span 2" : "span 1" }}>
               {!presentationMode && <button style={closeBtn} onClick={() => toggle("notes")}>×</button>}
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Type shared lesson summary notes here…" style={{ ...inputStyle, flex: 1, minHeight: "220px", resize: "none", marginTop: "12px" }} />
-            </div>
-          )}
-
-          {/* ROSTER */}
-          {visible.roster && (
-            <div style={{ ...cardStyle, gridColumn: widgetSpan.roster ? "span 2" : "span 1" }}>
-              {!presentationMode && <button style={closeBtn} onClick={() => toggle("roster")}>×</button>}
-              {renderRosterContent()}
             </div>
           )}
 
