@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { getApiUrl, setApiUrl, pushIntentions, pushStudents, pushActiveSubject, fetchNotes, fetchAppConfig, pushAppConfig, fetchStudents, fetchClassList, exportReportsToDoc, type Note, type DocReportStudent } from "./services/notes";
+import { getApiUrl, setApiUrl, pushIntentions, pushStudents, pushActiveSubject, fetchNotes, fetchAppConfig, pushAppConfig, fetchStudents, fetchClassList, exportReportsToDoc, type Note, type DocReportStudent } from "../services/notes";
 import {
   Palette, Dumbbell, Music, Drama, Languages, Globe, Apple, Sandwich, Calculator,
   SpellCheck, BookOpen, BookMarked, Lightbulb, Library, Search, Brain, Users, Ticket, Pin,
