@@ -115,3 +115,9 @@ code {
   0%, 100% { background-color: #c47b7b; }
   50% { background-color: #f2ede4; }
 }
+
+/* Pulses the day-note reminder popup so it's hard to miss even with audio off. */
+@keyframes reminderPulse {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.03); }
+}
