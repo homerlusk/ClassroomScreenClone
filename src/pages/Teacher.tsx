@@ -92,11 +92,50 @@ const REASON_OPTIONS: Record<string, Record<string, string[]>> = {
       "Moves quickly — check depth over speed",
     ],
   },
+  sel: {
+    NS: [
+      "Disrupts the learning of others",
+      "Struggles to follow classroom routines",
+      "Difficulty managing frustration or anger",
+      "Excludes or is unkind to peers",
+      "Refuses to participate or engage",
+      "Needs constant redirection to stay on task",
+    ],
+    AE: [
+      "Follows routines with reminders",
+      "Beginning to manage frustration, still needs support",
+      "Occasionally struggles with sharing or turn-taking",
+      "Inconsistent focus during independent work",
+      "Working on accepting feedback gracefully",
+      "Sometimes interrupts or talks out of turn",
+    ],
+    ME: [
+      "Follows classroom routines independently",
+      "Manages emotions appropriately",
+      "Works well both independently and in groups",
+      "Shows kindness and respect to peers",
+      "Takes responsibility for own actions",
+      "Stays on task with minimal reminders",
+    ],
+    EE: [
+      "Models excellent behavior for peers",
+      "Shows strong self-regulation under pressure",
+      "Actively includes and supports classmates",
+      "Takes initiative to help resolve conflicts",
+      "Demonstrates leadership in group settings",
+      "Reflects thoughtfully on own behavior and growth",
+    ],
+  },
 };
 
 function reasonsFor(subject: string, grade: string): string[] {
   return REASON_OPTIONS[subject]?.[grade] || REASON_OPTIONS.default[grade] || [];
 }
+
+// Only these ever need observations logged — other lesson types (art, PE,
+// assembly, recess, etc.) can be active on the classroom screen without ever
+// cluttering the phone's subject tabs.
+const LOGGABLE_SUBJECTS = ["literacy", "spelling", "story", "maths", "uoi"];
 
 function isoWeek(date: Date): string {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -269,7 +308,8 @@ export default function Teacher() {
       if (
         activeSubjectData.subject &&
         activeSubjectData.subject !== lastSyncedRemoteRef.current &&
-        intentionsData[activeSubjectData.subject]
+        intentionsData[activeSubjectData.subject] &&
+        LOGGABLE_SUBJECTS.includes(activeSubjectData.subject)
       ) {
         lastSyncedRemoteRef.current = activeSubjectData.subject;
         setSubject(activeSubjectData.subject);
@@ -467,7 +507,7 @@ export default function Teacher() {
       )}
 
       <div style={styles.tabRow}>
-        {Object.keys(intentions).map((s) => (
+        {Object.keys(intentions).filter(s => LOGGABLE_SUBJECTS.includes(s)).map((s) => (
           <button
             key={s}
             onClick={() => setSubject(s)}
@@ -476,9 +516,17 @@ export default function Teacher() {
             {intentions[s]?.label || s}
           </button>
         ))}
+        {/* Always present, regardless of what's showing on the classroom screen —
+            behavior observations aren't tied to a specific lesson being displayed. */}
+        <button
+          onClick={() => setSubject("sel")}
+          style={{ ...styles.tab, ...(subject === "sel" ? styles.tabActive : {}) }}
+        >
+          🧠 SEL
+        </button>
       </div>
 
-      {remoteSubject && intentions[remoteSubject] && (
+      {remoteSubject && intentions[remoteSubject] && LOGGABLE_SUBJECTS.includes(remoteSubject) && (
         <div style={styles.syncRow}>
           <span>🖥️ Screen: <b>{intentions[remoteSubject]?.label || remoteSubject}</b></span>
           {subject !== remoteSubject && (
