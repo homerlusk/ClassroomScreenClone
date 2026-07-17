@@ -169,6 +169,21 @@ const LESSON_TYPES: LessonType[] = [
   { id: "off", label: "Off Schedule", ...PALETTES.others },
 ];
 
+function stripLatex(s: string): string {
+  return s
+    .replace(/\\text\{([^}]*)\}/g, "$1")
+    .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, "$1/$2")
+    .replace(/\\times/g, "×")
+    .replace(/\\div/g, "÷")
+    .replace(/\\cdot/g, "×")
+    .replace(/\\_/g, "_")
+    .replace(/\$/g, "")
+    .replace(/\\[a-zA-Z]+/g, "")
+    .replace(/[{}]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function LessonIcon({ id, size = 32, color = "#000" }: { id: string; size?: number; color?: string }) {
   const props = { size, color, strokeWidth: 2 };
   switch (id) {
@@ -1908,6 +1923,12 @@ Write:
 1. Exactly 5 short maths practice questions appropriate for Grade 5 that review/recall the objective above, increasing slightly in difficulty. Number them 1 to 5.
 2. One literacy warm-up prompt that reviews/recalls the objective above — a short writing or thinking prompt, one or two sentences.
 
+Formatting rules — this will be displayed as plain text with no math rendering, so:
+- Never use LaTeX or math markup of any kind (no $, \frac, \text, or similar).
+- Write fractions as plain text like 2/7 or "2 and 1/4", not as stacked/LaTeX fractions.
+- Use plain "___" for blanks, not \text{\_\_\_\_} or similar.
+- No markdown formatting (no **, no backticks, no headers).
+
 Respond in EXACTLY this format, with no extra commentary before or after:
 MATHS:
 1. ...
@@ -1931,8 +1952,8 @@ LITERACY:
       const mathsMatch = text.match(/MATHS:([\s\S]*?)LITERACY:/i);
       const literacyMatch = text.match(/LITERACY:([\s\S]*)$/i);
       const mathsQuestions = (mathsMatch?.[1] || "")
-        .split("\n").map((l: string) => l.replace(/^\s*\d+\.\s*/, "").trim()).filter(Boolean).slice(0, 5);
-      const literacyPrompt = (literacyMatch?.[1] || "").trim();
+        .split("\n").map((l: string) => stripLatex(l.replace(/^\s*\d+\.\s*/, "").trim())).filter(Boolean).slice(0, 5);
+      const literacyPrompt = stripLatex((literacyMatch?.[1] || "").trim());
       if (mathsQuestions.length === 0 && !literacyPrompt) {
         throw new Error("Couldn't read a valid starter from the response — try again.");
       }
