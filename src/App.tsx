@@ -130,6 +130,10 @@ interface SubjectProfile {
 }
 
 interface UoiUnit { title: string; centralIdea: string; loi1: string; loi2: string; loi3: string; }
+// A same-day, time-linked reminder — e.g. "14:45, Sarah leaves early". Fires a
+// popup + sound 5 minutes before the given time. Scoped to `date` so old
+// entries from previous days don't clutter today's list or re-fire.
+interface DayNote { id: string; time: string; text: string; date: string; notified: boolean; }
 
 interface ReportData {
   units: UoiUnit[];
@@ -1311,6 +1315,18 @@ export default function App() {
   const [morningStarterDismissedDate, setMorningStarterDismissedDate] = useState<string | null>(
     () => localStorage.getItem("morningStarterDismissedDate")
   );
+  // "✓ Mark Complete" on Registration's embedded attendance section hides it
+  // for the rest of the day — same per-day pattern as the Morning Starter
+  // dismiss, resets automatically the next morning.
+  const [attendanceCompleteDate, setAttendanceCompleteDate] = useState<string | null>(
+    () => localStorage.getItem("attendanceCompleteDate")
+  );
+  const [dayNotes, setDayNotes] = useState<DayNote[]>(() => {
+    try { return JSON.parse(localStorage.getItem("dayNotes") || "[]"); } catch { return []; }
+  });
+  const [dayNoteTimeInput, setDayNoteTimeInput] = useState<string>("");
+  const [dayNoteTextInput, setDayNoteTextInput] = useState<string>("");
+  const [activeReminder, setActiveReminder] = useState<DayNote | null>(null);
   const [teams, setTeams] = useState<ScoreTeam[]>([{ id: 1, name: "Team A", score: 0, color: "#2f9e52" }, { id: 2, name: "Team B", score: 0, color: "#2f6fb8" }]);
   const [newTeamName, setNewTeamName] = useState<string>("");
   const [diceValue, setDiceValue] = useState<number>(1);
@@ -1357,6 +1373,66 @@ const playTimerChime = () => {
       console.warn("Audio context error", e);
     }
   };
+
+  // Deliberately a different tone pattern (rising three-note chime) from the
+  // timer's alternating two-note chime, so the two are distinguishable by ear.
+  const playReminderChime = () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      const duration = 4;
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(659.25, ctx.currentTime);
+      osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.3);
+      osc.frequency.setValueAtTime(987.77, ctx.currentTime + 0.6);
+      gainNode.gain.setValueAtTime(0.25, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
+    } catch (e) {
+      console.warn("Audio context error", e);
+    }
+  };
+
+  // Checks every 20s for any of today's day notes whose time is within the
+  // next 5 minutes and hasn't fired yet. The 20-minute "grace" window after
+  // the actual time stops a reminder from silently firing hours late if the
+  // tab was inactive/backgrounded when its window passed.
+  useEffect(() => {
+    const checkReminders = () => {
+      const now = new Date();
+      const todayStr = now.toISOString().slice(0, 10);
+      setDayNotes(prev => {
+        let changed = false;
+        const updated = prev.map(note => {
+          if (note.date !== todayStr || note.notified) return note;
+          const [h, m] = note.time.split(":").map(Number);
+          if (isNaN(h) || isNaN(m)) return note;
+          const noteTime = new Date(now);
+          noteTime.setHours(h, m, 0, 0);
+          const triggerTime = new Date(noteTime.getTime() - 5 * 60000);
+          const graceEnd = new Date(noteTime.getTime() + 20 * 60000);
+          if (now >= triggerTime && now <= graceEnd) {
+            changed = true;
+            playReminderChime();
+            setActiveReminder(note);
+            return { ...note, notified: true };
+          }
+          return note;
+        });
+        return changed ? updated : prev;
+      });
+    };
+    checkReminders();
+    const id = setInterval(checkReminders, 20000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggle = (key: Widget) => setVisible((v) => ({ ...v, [key]: !v[key] }));
 
@@ -1407,6 +1483,11 @@ const playTimerChime = () => {
     if (morningStarterDismissedDate) localStorage.setItem("morningStarterDismissedDate", morningStarterDismissedDate);
     else localStorage.removeItem("morningStarterDismissedDate");
   }, [morningStarterDismissedDate]);
+  useEffect(() => {
+    if (attendanceCompleteDate) localStorage.setItem("attendanceCompleteDate", attendanceCompleteDate);
+    else localStorage.removeItem("attendanceCompleteDate");
+  }, [attendanceCompleteDate]);
+  useEffect(() => { localStorage.setItem("dayNotes", JSON.stringify(dayNotes)); }, [dayNotes]);
 
   // Presentation mode: a one-tap way to hide every teacher/editing control so the
   // shared screen only shows what students need to see. Entering it force-closes
@@ -1917,6 +1998,23 @@ LITERACY:
 return (
     /* Merged your outer layout styles with the critical 'alignItems: "flex-start"' property */
     <div style={{ display: "flex", alignItems: "flex-start", width: "100vw", minHeight: "100vh", background: C.bg, color: C.text, fontFamily: font, boxSizing: "border-box", margin: 0, padding: 0, overflowX: "hidden", maxWidth: "100%" }}>
+      {activeReminder && (
+        <div style={{
+          position: "fixed", top: "20px", left: "50%", transform: "translateX(-50%)", zIndex: 2000,
+          background: C.amber, border: "3px solid #000", borderRadius: "16px", padding: "18px 26px",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.3)", display: "flex", alignItems: "center", gap: "16px",
+          animation: "reminderPulse 1s ease-in-out infinite", maxWidth: "90vw",
+        }}>
+          <span style={{ fontSize: "28px", flexShrink: 0 }}>⏰</span>
+          <div>
+            <div style={{ fontWeight: "900", fontSize: "15px", color: "#000" }}>Reminder — {activeReminder.time}</div>
+            <div style={{ fontSize: "15px", color: "#000", fontWeight: "600" }}>{activeReminder.text}</div>
+          </div>
+          <button onClick={() => setActiveReminder(null)} style={{ ...btnGhost, fontSize: "13px", padding: "8px 16px", background: "#fff", flexShrink: 0 }}>
+            Dismiss
+          </button>
+        </div>
+      )}
       {/* ── LEFT SIDEBAR ── */}
       {showSidebar && (
         <div style={{ width: "110px", borderRight: `2px solid ${C.cardBorder}`, background: C.card, padding: "12px 10px", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", boxSizing: "border-box", overflowY: "auto", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>
@@ -2105,6 +2203,99 @@ return (
               <LessonIcon id="registration" size={48} />
               <h1 style={{ margin: 0, fontSize: "32px", fontWeight: "800", color: "#000", letterSpacing: "-0.5px", textTransform: "uppercase" }}>Registration</h1>
             </div>
+
+            {/* ATTENDANCE — vanishes once marked complete for the day, so it
+                doesn't sit here taking up space for the rest of the day once
+                it's actually done. */}
+            {(() => {
+              const todayStr = new Date().toISOString().slice(0, 10);
+              const attendanceDoneToday = attendanceCompleteDate === todayStr;
+              if (attendanceDoneToday) {
+                return (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", borderRadius: "10px", padding: "10px 16px", marginBottom: "22px", border: "1.5px solid #000" }}>
+                    <span style={{ fontSize: "14px", fontWeight: "800", color: C.sageDark }}>✓ Attendance marked complete for today</span>
+                    {!presentationMode && (
+                      <button onClick={() => setAttendanceCompleteDate(null)} style={{ ...btnGhost, fontSize: "12px", padding: "5px 12px" }}>Undo</button>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <div style={{ marginBottom: "24px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
+                    <span style={{ fontSize: "18px", fontWeight: "800" }}>✅ Attendance</span>
+                    {!presentationMode && students.length > 0 && (
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button onClick={() => setStudents(students.map(s => ({ ...s, present: true })))} style={{ ...btnGhost, fontSize: "12px", padding: "6px 12px", background: "#fff" }}>
+                          ✓ Mark All Present
+                        </button>
+                        <button onClick={() => setAttendanceCompleteDate(todayStr)} style={{ ...btnSage, fontSize: "12px", padding: "6px 14px" }}>
+                          ✓ Mark Complete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {students.length === 0 ? (
+                    <div style={{ color: C.muted, fontSize: "14px", fontStyle: "italic" }}>No students in the roster yet — add them in the Roster widget.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {students.map((s, i) => (
+                        <button key={i} onClick={() => setStudents(students.map((st, idx) => idx === i ? { ...st, present: !st.present } : st))}
+                          style={{ background: s.present ? "#fff" : "#f5c6c6", border: s.present ? "2px solid #000" : `2px solid ${C.roses}`, borderRadius: "10px", padding: "9px 16px", fontSize: "15px", fontWeight: "700", color: "#000", cursor: "pointer", opacity: s.present ? 1 : 0.7, textDecoration: s.present ? "none" : "line-through" }}>
+                          {s.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* DAY NOTES — time-linked reminders, e.g. "14:45, Sarah leaves early".
+                Fires a popup + sound 5 minutes before the given time, regardless
+                of what's on screen at that moment. */}
+            {!presentationMode && (
+              <div style={{ marginBottom: "24px" }}>
+                <div style={{ fontSize: "18px", fontWeight: "800", marginBottom: "12px" }}>📌 Day Notes</div>
+                <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
+                  <input type="time" value={dayNoteTimeInput} onChange={(e) => setDayNoteTimeInput(e.target.value)}
+                    style={{ ...inputStyle, width: "auto", flex: "0 0 110px" }} />
+                  <input type="text" value={dayNoteTextInput} onChange={(e) => setDayNoteTextInput(e.target.value)}
+                    placeholder="e.g. Sarah leaves early — remind mum's picking up"
+                    onKeyDown={(e) => { if (e.key === "Enter" && dayNoteTimeInput && dayNoteTextInput.trim()) {
+                      setDayNotes([...dayNotes, { id: `${Date.now()}`, time: dayNoteTimeInput, text: dayNoteTextInput.trim(), date: new Date().toISOString().slice(0, 10), notified: false }]);
+                      setDayNoteTextInput(""); setDayNoteTimeInput("");
+                    } }}
+                    style={{ ...inputStyle, flex: 1, minWidth: "200px" }} />
+                  <button onClick={() => { if (dayNoteTimeInput && dayNoteTextInput.trim()) {
+                      setDayNotes([...dayNotes, { id: `${Date.now()}`, time: dayNoteTimeInput, text: dayNoteTextInput.trim(), date: new Date().toISOString().slice(0, 10), notified: false }]);
+                      setDayNoteTextInput(""); setDayNoteTimeInput("");
+                    } }}
+                    style={{ ...btnSage, padding: "10px 18px", fontSize: "13px" }}>
+                    + Add
+                  </button>
+                </div>
+                {(() => {
+                  const todayStr = new Date().toISOString().slice(0, 10);
+                  const todaysNotes = dayNotes.filter(n => n.date === todayStr).sort((a, b) => a.time.localeCompare(b.time));
+                  if (todaysNotes.length === 0) {
+                    return <div style={{ color: C.muted, fontSize: "13px", fontStyle: "italic" }}>No reminders set for today.</div>;
+                  }
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {todaysNotes.map(n => (
+                        <div key={n.id} style={{ display: "flex", alignItems: "center", gap: "10px", background: "#fff", borderRadius: "8px", padding: "8px 12px", fontSize: "13px", opacity: n.notified ? 0.5 : 1 }}>
+                          <span style={{ fontWeight: "800", color: "#000" }}>{n.time}</span>
+                          <span style={{ flex: 1, color: "#000" }}>{n.text}</span>
+                          {n.notified && <span style={{ fontSize: "11px", color: C.sageDark, fontWeight: "700" }}>✓ Sent</span>}
+                          <button onClick={() => setDayNotes(dayNotes.filter(dn => dn.id !== n.id))} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: "16px" }}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
             {(() => {
               const todayStr = new Date().toISOString().slice(0, 10);
               const dismissedToday = morningStarterDismissedDate === todayStr;
