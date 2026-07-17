@@ -1274,6 +1274,18 @@ export default function App() {
   });
   const [studentName, setStudentName] = useState<string>("");
   const [importingClassList, setImportingClassList] = useState<boolean>(false);
+  // The API URL connect UI used to only exist inside Draft Reports, which
+  // itself refused to render until students.length > 0 — but importing
+  // students from the Class List tab needs this same URL first. That's a
+  // genuine chicken-and-egg deadlock, so this now lives here instead, always
+  // reachable from the Roster content regardless of roster state.
+  const [apiUrlConnected, setApiUrlConnected] = useState<boolean>(() => !!getApiUrl());
+  const [rosterApiUrlInput, setRosterApiUrlInput] = useState<string>(() => getApiUrl());
+  const connectRosterApiUrl = () => {
+    if (!rosterApiUrlInput.trim()) return;
+    setApiUrl(rosterApiUrlInput.trim());
+    setApiUrlConnected(true);
+  };
   const [classListImportError, setClassListImportError] = useState<string>("");
   const [chosenStudent, setChosenStudent] = useState<string>("");
   const [groupSize, setGroupSize] = useState<number>(3);
@@ -2007,6 +2019,24 @@ LITERACY:
             style={inputStyle} />
           <button style={btnSlate} onClick={() => { if (studentName.trim()) { setStudents([...students, { name: studentName.trim(), present: true, pronoun: "they" }]); setStudentName(""); } }}>+</button>
         </div>
+      )}
+      {!presentationMode && !apiUrlConnected && (
+        <div style={{ background: C.highlight, borderRadius: "10px", padding: "8px 10px", marginTop: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
+          <span style={{ fontSize: "11px", color: C.muted }}>📡 Connect a Teacher API URL to import from Class List:</span>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <input value={rosterApiUrlInput} onChange={(e) => setRosterApiUrlInput(e.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
+              style={{ ...inputStyle, flex: 1, fontSize: "11px", padding: "5px 8px" }}
+              onKeyDown={(e) => e.key === "Enter" && connectRosterApiUrl()} />
+            <button onClick={connectRosterApiUrl} disabled={!rosterApiUrlInput.trim()} style={{ ...btnSage, fontSize: "11px", padding: "5px 12px" }}>Connect</button>
+          </div>
+        </div>
+      )}
+      {!presentationMode && apiUrlConnected && (
+        <span style={{ fontSize: "11px", color: C.muted, fontStyle: "italic", marginTop: "8px", display: "block" }}>
+          📡 API connected.
+          <button onClick={() => { setRosterApiUrlInput(getApiUrl()); setApiUrlConnected(false); }} style={{ ...linkStyle, marginLeft: "6px" }}>Change</button>
+        </span>
       )}
       {!presentationMode && (
         <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
