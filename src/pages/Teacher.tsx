@@ -135,7 +135,12 @@ function reasonsFor(subject: string, grade: string): string[] {
 // Only these ever need observations logged — other lesson types (art, PE,
 // assembly, recess, etc.) can be active on the classroom screen without ever
 // cluttering the phone's subject tabs.
-const LOGGABLE_SUBJECTS = ["literacy", "spelling", "story", "maths", "uoi"];
+const LOGGABLE_SUBJECTS = ["literacy", "spelling", "story", "maths", "uoi", "pyp"];
+
+// Shortened labels for the phone's tab row specifically — the classroom
+// screen's full label ("PYP Exhibition") has plenty of room, but a small
+// phone tab doesn't, so this overrides just the display text here.
+const SHORT_TAB_LABELS: Record<string, string> = { pyp: "PYP X" };
 
 function isoWeek(date: Date): string {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -513,7 +518,7 @@ export default function Teacher() {
             onClick={() => setSubject(s)}
             style={{ ...styles.tab, ...(subject === s ? styles.tabActive : {}) }}
           >
-            {intentions[s]?.label || s}
+            {SHORT_TAB_LABELS[s] || intentions[s]?.label || s}
           </button>
         ))}
         {/* Always present, regardless of what's showing on the classroom screen —
