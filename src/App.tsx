@@ -1995,6 +1995,58 @@ LITERACY:
     return <div style={{ width: "100%", minHeight: "450px", border: `2px solid ${C.cardBorder}`, borderRadius: "12px", overflow: "hidden", background: C.bg }} dangerouslySetInnerHTML={{ __html: embedHtml }} />;
   }, [embedHtml]);
 
+  // Shared between the standalone Roster widget and Registration's embedded
+  // attendance section, so add/import/delete work identically in both places
+  // and there's only one copy of this logic to maintain.
+  const renderRosterContent = () => (
+    <>
+      {!presentationMode && (
+        <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+          <input value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="Name…"
+            onKeyDown={(e) => { if (e.key === "Enter" && studentName.trim()) { e.preventDefault(); setStudents([...students, { name: studentName.trim(), present: true, pronoun: "they" }]); setStudentName(""); } }}
+            style={inputStyle} />
+          <button style={btnSlate} onClick={() => { if (studentName.trim()) { setStudents([...students, { name: studentName.trim(), present: true, pronoun: "they" }]); setStudentName(""); } }}>+</button>
+        </div>
+      )}
+      {!presentationMode && (
+        <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+          <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1, border: "1px dashed #000" }} disabled={importingClassList} onClick={importFromClassList}>
+            {importingClassList ? "Importing..." : "📥 Import from Class List tab"}
+          </button>
+        </div>
+      )}
+      {!presentationMode && classListImportError && (
+        <span style={{ fontSize: "11px", color: C.roseDark, fontStyle: "italic" }}>⚠️ {classListImportError}</span>
+      )}
+      {!presentationMode && students.length > 0 && (
+        <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+          <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1 }}
+            onClick={() => setStudents(students.map(s => ({ ...s, present: true })))}>
+            ✓ Mark All Present
+          </button>
+          <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1 }}
+            onClick={() => setStudents(students.map(s => ({ ...s, present: false })))}>
+            ✕ Mark All Absent
+          </button>
+        </div>
+      )}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", maxHeight: "220px", overflowY: "auto", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "8px", marginTop: "8px" }}>
+        {students.map((s, i) => (
+          <div key={i} style={{ background: s.present ? C.highlight : "#f5c6c6", border: s.present ? `1px solid ${C.cardBorder}` : `1px solid ${C.roses}`, padding: "4px 8px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px", opacity: s.present ? 1 : 0.6 }}>
+            <input type="checkbox" checked={s.present} onChange={() => setStudents(students.map((st, idx) => idx === i ? { ...st, present: !st.present } : st))} style={{ cursor: "pointer" }} />
+            <span style={{ fontWeight: "700", textDecoration: s.present ? "none" : "line-through" }}>{s.name}</span>
+            {!presentationMode && (
+              <button onClick={() => setStudents(students.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}>×</button>
+            )}
+          </div>
+        ))}
+        {students.length === 0 && (
+          <span style={{ color: C.muted, fontSize: "13px", fontStyle: "italic" }}>No students in the roster yet.</span>
+        )}
+      </div>
+    </>
+  );
+
 return (
     /* Merged your outer layout styles with the critical 'alignItems: "flex-start"' property */
     <div style={{ display: "flex", alignItems: "flex-start", width: "100vw", minHeight: "100vh", background: C.bg, color: C.text, fontFamily: font, boxSizing: "border-box", margin: 0, padding: 0, overflowX: "hidden", maxWidth: "100%" }}>
@@ -2222,31 +2274,15 @@ return (
               }
               return (
                 <div style={{ marginBottom: "24px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", marginBottom: "4px" }}>
                     <span style={{ fontSize: "18px", fontWeight: "800" }}>✅ Attendance</span>
-                    {!presentationMode && students.length > 0 && (
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <button onClick={() => setStudents(students.map(s => ({ ...s, present: true })))} style={{ ...btnGhost, fontSize: "12px", padding: "6px 12px", background: "#fff" }}>
-                          ✓ Mark All Present
-                        </button>
-                        <button onClick={() => setAttendanceCompleteDate(todayStr)} style={{ ...btnSage, fontSize: "12px", padding: "6px 14px" }}>
-                          ✓ Mark Complete
-                        </button>
-                      </div>
+                    {!presentationMode && (
+                      <button onClick={() => setAttendanceCompleteDate(todayStr)} style={{ ...btnSage, fontSize: "12px", padding: "6px 14px" }}>
+                        ✓ Mark Complete
+                      </button>
                     )}
                   </div>
-                  {students.length === 0 ? (
-                    <div style={{ color: C.muted, fontSize: "14px", fontStyle: "italic" }}>No students in the roster yet — add them in the Roster widget.</div>
-                  ) : (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                      {students.map((s, i) => (
-                        <button key={i} onClick={() => setStudents(students.map((st, idx) => idx === i ? { ...st, present: !st.present } : st))}
-                          style={{ background: s.present ? "#fff" : "#f5c6c6", border: s.present ? "2px solid #000" : `2px solid ${C.roses}`, borderRadius: "10px", padding: "9px 16px", fontSize: "15px", fontWeight: "700", color: "#000", cursor: "pointer", opacity: s.present ? 1 : 0.7, textDecoration: s.present ? "none" : "line-through" }}>
-                          {s.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {renderRosterContent()}
                 </div>
               );
             })()}
@@ -2714,41 +2750,7 @@ return (
           {visible.roster && (
             <div style={{ ...cardStyle, gridColumn: widgetSpan.roster ? "span 2" : "span 1" }}>
               {!presentationMode && <button style={closeBtn} onClick={() => toggle("roster")}>×</button>}
-              <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-                <input value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="Name…"
-                  onKeyDown={(e) => { if (e.key === "Enter" && studentName.trim()) { e.preventDefault(); setStudents([...students, { name: studentName.trim(), present: true, pronoun: "they" }]); setStudentName(""); } }}
-                  style={inputStyle} />
-                <button style={btnSlate} onClick={() => { if (studentName.trim()) { setStudents([...students, { name: studentName.trim(), present: true, pronoun: "they" }]); setStudentName(""); } }}>+</button>
-              </div>
-              <div style={{ display: "flex", gap: "6px" }}>
-                <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1, border: "1px dashed #000" }} disabled={importingClassList} onClick={importFromClassList}>
-                  {importingClassList ? "Importing..." : "📥 Import from Class List tab"}
-                </button>
-              </div>
-              {classListImportError && (
-                <span style={{ fontSize: "11px", color: C.roseDark, fontStyle: "italic" }}>⚠️ {classListImportError}</span>
-              )}
-              {students.length > 0 && (
-                <div style={{ display: "flex", gap: "6px" }}>
-                  <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1 }}
-                    onClick={() => setStudents(students.map(s => ({ ...s, present: true })))}>
-                    ✓ Mark All Present
-                  </button>
-                  <button style={{ ...btnGhost, fontSize: "11px", padding: "6px 10px", flex: 1 }}
-                    onClick={() => setStudents(students.map(s => ({ ...s, present: false })))}>
-                    ✕ Mark All Absent
-                  </button>
-                </div>
-              )}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", maxHeight: "220px", overflowY: "auto", borderTop: `1px solid ${C.cardBorder}`, paddingTop: "8px", marginTop: "8px" }}>
-                {students.map((s, i) => (
-                  <div key={i} style={{ background: s.present ? C.highlight : "#f5c6c6", border: s.present ? `1px solid ${C.cardBorder}` : `1px solid ${C.roses}`, padding: "4px 8px", borderRadius: "8px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px", opacity: s.present ? 1 : 0.6 }}>
-                    <input type="checkbox" checked={s.present} onChange={() => setStudents(students.map((st, idx) => idx === i ? { ...st, present: !st.present } : st))} style={{ cursor: "pointer" }} />
-                    <span style={{ fontWeight: "700", textDecoration: s.present ? "none" : "line-through" }}>{s.name}</span>
-                    <button onClick={() => setStudents(students.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}>×</button>
-                  </div>
-                ))}
-              </div>
+              {renderRosterContent()}
             </div>
           )}
 
